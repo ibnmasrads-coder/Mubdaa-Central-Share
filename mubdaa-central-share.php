@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mubdaa Central Share
  * Description: Desktop-only MainWP publish-result sharing with a real, copyable featured-image card and selected article links.
- * Version: 0.2.0-dev
+ * Version: 0.3.0-dev
  * Requires at least: 6.3
  * Requires PHP: 8.0
  * Author: Mubdaa
@@ -13,7 +13,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Mubdaa_Central_Share {
-	const VERSION = '0.2.0-dev';
+	const VERSION = '0.3.0-dev';
 	const MAX_IMAGE_BYTES = 12582912; // 12 MiB.
 	const MAX_IMAGE_PIXELS = 24000000;
 	const TTL = 1800; // Ephemeral source metadata only; no publication/share history.
