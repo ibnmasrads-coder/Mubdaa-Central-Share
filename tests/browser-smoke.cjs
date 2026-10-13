@@ -20,7 +20,7 @@ function html(ajax) {
   '<div id="mcs-sites"></div><canvas id="mcs-canvas"></canvas><div id="mcs-image-state"></div><button id="mcs-retry-image" hidden></button>' +
   '<textarea id="mcs-caption"></textarea><div id="mcs-caption-progress"></div>' +
   '<button id="mcs-copy-image" disabled></button><button id="mcs-download-image" disabled></button>' +
-  '<button id="mcs-copy-caption" disabled></button><button id="mcs-next-caption" hidden></button>' +
+  '<button id="mcs-copy-caption" disabled></button>' +
   '<div id="mcs-toast"></div></section></body></html>';
 }
 
