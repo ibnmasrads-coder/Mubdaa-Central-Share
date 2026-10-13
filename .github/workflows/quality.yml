@@ -1,0 +1,75 @@
+name: Code quality
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-and-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax (8.0)
+        run: |
+          sudo update-alternatives --set php /usr/bin/php8.3 || true
+          php -l mubdaa-central-share.php
+          php -l tests/isolation-smoke.php
+          php -l includes/class-shortlinks.php
+          php -l tests/shortlinks-smoke.php
+      - name: WordPress isolation smoke
+        run: php tests/isolation-smoke.php
+      - name: Verified child shortlink integration
+        run: php tests/shortlinks-smoke.php
+      - name: Real image endpoint and mixed-case nonce regression
+        run: |
+          php tests/image-endpoint-smoke.php > /tmp/mcs-endpoint-image.png
+          php -r 'if (!getimagesize("/tmp/mcs-endpoint-image.png")) { exit(1); }'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install and bundle document generators (locally served, no CDN)
+        run: |
+          npm install --no-save --silent jsdom@26 jquery@3 esbuild@0.25 pdf-lib@1.17.1 jszip@3.10.1
+          npx esbuild assets/document-export.js --bundle --platform=browser --format=iife --target=es2020 --minify --outfile=assets/documents.bundle.js
+          node --check assets/documents.bundle.js
+      - name: JavaScript syntax
+        run: |
+          node --check assets/share.js
+          node --check assets/document-export.js
+      - name: Browser-level MainWP popup smoke
+        run: |
+          node tests/browser-smoke.cjs
+          npx esbuild assets/document-export.js --bundle --platform=node --format=cjs --outfile=tests/document-export-build.cjs
+          node tests/document-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcs-document-qa
+          path: |
+            /tmp/mcs-test-export.pdf
+            /tmp/mcs-test-export.docx
+          retention-days: 1
+      - name: Package expectations
+        run: |
+          grep -q "Plugin Name: Mubdaa Central Share" mubdaa-central-share.php
+          grep -q "mcs_featured_image" mubdaa-central-share.php
+          grep -q "mainwp_bulkposting_done" includes/class-shortlinks.php
+          grep -q "mainwp_post_postingbulk" assets/share.js
+          grep -q "navigator.clipboard.write" assets/share.js
+          ! grep -q "sendMessage(" assets/share.js
+
+      - name: Build development WordPress ZIP (tests excluded)
+        run: |
+          mkdir -p dist/mubdaa-central-share/assets dist/mubdaa-central-share/includes
+          cp mubdaa-central-share.php dist/mubdaa-central-share/
+          cp includes/class-shortlinks.php dist/mubdaa-central-share/includes/
+          cp assets/share.js assets/share.css assets/documents.bundle.js dist/mubdaa-central-share/assets/
+          (cd dist && zip -qr mubdaa-central-share-dev.zip mubdaa-central-share)
+          unzip -l dist/mubdaa-central-share-dev.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mubdaa-central-share-dev
+          path: dist/mubdaa-central-share-dev.zip
+          retention-days: 7
