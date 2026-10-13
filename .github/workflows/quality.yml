@@ -1,0 +1,33 @@
+name: Code quality
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-and-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax (8.0)
+        run: |
+          sudo update-alternatives --set php /usr/bin/php8.3 || true
+          php -l mubdaa-central-share.php
+          php -l tests/isolation-smoke.php
+      - name: WordPress isolation smoke
+        run: php tests/isolation-smoke.php
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JavaScript syntax
+        run: node --check assets/share.js
+      - name: Package expectations
+        run: |
+          grep -q "Plugin Name: Mubdaa Central Share" mubdaa-central-share.php
+          grep -q "mcs_featured_image" mubdaa-central-share.php
+          grep -q "mainwp_post_postingbulk" assets/share.js
+          grep -q "navigator.clipboard.write" assets/share.js
+          ! grep -q "sendMessage(" assets/share.js
