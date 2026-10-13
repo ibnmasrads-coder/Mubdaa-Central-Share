@@ -147,6 +147,7 @@ final class Mubdaa_Central_Share {
 						<strong>معاينة بطاقة الصورة</strong>
 						<canvas id="mcs-canvas" role="img" aria-label="بطاقة الصورة البارزة مع عنوان الخبر"></canvas>
 						<div id="mcs-image-state" class="mcs-hint" aria-live="polite">جاري تجهيز البطاقة…</div>
+						<button type="button" id="mcs-retry-image" hidden>إعادة محاولة تحميل الصورة</button>
 					</div>
 					<div class="mcs-caption-wrap">
 						<div class="mcs-caption-head">
