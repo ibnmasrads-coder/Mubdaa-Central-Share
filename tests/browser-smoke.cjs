@@ -98,6 +98,7 @@ async function main() {
     value: { writeText: async text => { copied = text; } },
     configurable: true
   });
+  manyDoc.querySelectorAll('.site-bulk-posting').forEach(row => row.remove());
   for (let id = 201; id <= 210; id++) {
     const site = manyDoc.createElement('div');
     site.className = 'site-bulk-posting';
