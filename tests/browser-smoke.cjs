@@ -17,7 +17,7 @@ function html(ajax) {
   '<div id="mcs-status"></div><button id="mcs-close"></button><div id="mcs-warning" hidden></div>' +
   '<textarea id="mcs-title"></textarea><div id="mcs-selected-count"></div>' +
   '<button id="mcs-select-all"></button><button id="mcs-select-none"></button>' +
-  '<div id="mcs-sites"></div><canvas id="mcs-canvas"></canvas><div id="mcs-image-state"></div>' +
+  '<div id="mcs-sites"></div><canvas id="mcs-canvas"></canvas><div id="mcs-image-state"></div><button id="mcs-retry-image" hidden></button>' +
   '<textarea id="mcs-caption"></textarea><div id="mcs-caption-progress"></div>' +
   '<button id="mcs-copy-image" disabled></button><button id="mcs-download-image" disabled></button>' +
   '<button id="mcs-copy-caption" disabled></button><button id="mcs-next-caption" hidden></button>' +
@@ -68,6 +68,8 @@ async function main() {
   assert.equal(document.querySelectorAll('#mcs-sites input[type="checkbox"]').length, 2);
   assert.equal(document.getElementById('mcs-selected-count').textContent, '2 محدد');
   assert.match(document.getElementById('mcs-caption').value, /jawharksa.com/);
+  assert.equal(document.getElementById('mcs-caption').value.split('روابط الخبر:').length, 2);
+  assert.equal(document.getElementById('mcs-next-caption'), null, 'No legacy split caption button');
   assert.match(document.getElementById('mcs-caption').value, /bawsalamashhad.com/);
 
   document.getElementById('mcs-select-none').click();
@@ -86,6 +88,42 @@ async function main() {
     'synchronous MainWP publishing renders panel immediately');
   assert.match(sync.window.document.getElementById('mcs-caption').value, /jawharksa.com/);
   sync.dom.window.close();
+
+  // Regression: copying a long set of published links must never split at 900/1024 chars.
+  const many = await setup(true);
+  const manyDoc = many.window.document;
+  many.window.mcsShare.captionGuide = 1024;
+  let copied = null;
+  Object.defineProperty(many.window.navigator, 'clipboard', {
+    value: { writeText: async text => { copied = text; } },
+    configurable: true
+  });
+  for (let id = 201; id <= 210; id++) {
+    const site = manyDoc.createElement('div');
+    site.className = 'site-bulk-posting';
+    site.setAttribute('site-id', String(id));
+    const anchor = manyDoc.createElement('a');
+    anchor.textContent = 'موقع ' + id;
+    site.appendChild(anchor);
+    manyDoc.getElementById('mainwp-posting-post-modal').prepend(site);
+  }
+  for (let id = 201; id <= 210; id++) {
+    many.$(manyDoc).trigger('ajaxSuccess', [{}, {
+      data: 'action=mainwp_post_postingbulk&post_id=123&site_id=' + id + '&total=10'
+    }, {
+      result: '<a class="mainwp-may-hide-referrer" target="_blank" href="https://news-' + id + '.example.com/story/' + 'a'.repeat(160) + '">View Post</a>'
+    }]);
+  }
+  const fullText = manyDoc.getElementById('mcs-caption').value;
+  assert.ok(fullText.length > 1024, 'long share text passes the image-caption guideline');
+  assert.match(fullText, /news-210.example.com/, 'last site present without truncation');
+  assert.equal(manyDoc.getElementById('mcs-next-caption'), null, 'no chunking button at large volume');
+  assert.equal(manyDoc.getElementById('mcs-copy-caption').disabled, false);
+  manyDoc.getElementById('mcs-copy-caption').click();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(copied, fullText, 'one-click clipboard contains every selected URL');
+  many.dom.window.close();
+
   console.log('PASS: MainWP AJAX final-result timing, multi-select, reorder-ready state, popup reopen and synchronous mode');
 }
 
