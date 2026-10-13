@@ -120,7 +120,9 @@
       const parent = link.closest('.item');
       let name = parent?.querySelector('a[href*="managesites"]')?.textContent?.trim();
       if (!name) name = new URL(target).hostname;
-      const id = String(index + 1);
+      const nativeSiteLink = parent?.querySelector('a[href*="dashboard="]')?.getAttribute('href') || '';
+      const actualSiteId = nativeSiteLink ? new URL(nativeSiteLink, window.location.href).searchParams.get('dashboard') : null;
+      const id = String(actualSiteId || (index + 1));
       state.sites.set(id, { id, name, url: target, shareUrl: '', selected: true });
     });
     state.expected = entries.length;
