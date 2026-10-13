@@ -18,8 +18,11 @@ jobs:
           php -l mubdaa-central-share.php
           php -l tests/isolation-smoke.php
           php -l includes/class-shortlinks.php
+          php -l tests/shortlinks-smoke.php
       - name: WordPress isolation smoke
         run: php tests/isolation-smoke.php
+      - name: Verified child shortlink integration
+        run: php tests/shortlinks-smoke.php
       - name: Real image endpoint and mixed-case nonce regression
         run: |
           php tests/image-endpoint-smoke.php > /tmp/mcs-endpoint-image.png
