@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mubdaa Central Share
  * Description: Desktop-only MainWP publish-result sharing with a real, copyable featured-image card and selected article links.
- * Version: 0.1.0-dev
+ * Version: 0.2.0-dev
  * Requires at least: 6.3
  * Requires PHP: 8.0
  * Author: Mubdaa
@@ -13,8 +13,9 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Mubdaa_Central_Share {
-	const VERSION = '0.1.0-dev';
+	const VERSION = '0.2.0-dev';
 	const MAX_IMAGE_BYTES = 12582912; // 12 MiB.
+	const MAX_IMAGE_PIXELS = 24000000;
 	const TTL = 1800; // Ephemeral source metadata only; no publication/share history.
 
 	public static function boot(): void {
@@ -111,10 +112,10 @@ final class Mubdaa_Central_Share {
 				),
 				'expectedSites'  => 0, // JS derives this from MainWP's own queued site rows.
 				'webUrl'         => 'https://web.whatsapp.com/',
-				'maxCaption'     => 900, // Conservative chunk size; not a promise about WhatsApp's current limit.
+				'captionGuide'   => 1024, // Image-caption size guidance. No truncation or splitting.
 				'strings' => array(
 					'noImage'       => 'لا توجد صورة بارزة يمكن الوصول إليها لهذا المقال. لن نجهز مشاركة بدون صورة.',
-					'imageError'    => 'تعذر تجهيز الصورة الأصلية. راجع الملف البارز في اللوحة المركزية.',
+					'imageError'    => 'تعذر تحميل الصورة. راجع كود الخطأ الظاهر لتحديد السبب.',
 					'copyFailed'    => 'المتصفح لم يسمح بنسخ الصورة مباشرة. استخدم تحميل الصورة ثم أرفقها يدويًا.',
 				),
 			)
@@ -145,26 +146,25 @@ final class Mubdaa_Central_Share {
 					<div class="mcs-preview-wrap">
 						<strong>معاينة بطاقة الصورة</strong>
 						<canvas id="mcs-canvas" role="img" aria-label="بطاقة الصورة البارزة مع عنوان الخبر"></canvas>
-						<div id="mcs-image-state" class="mcs-hint">جاري تجهيز البطاقة…</div>
+						<div id="mcs-image-state" class="mcs-hint" aria-live="polite">جاري تجهيز البطاقة…</div>
 					</div>
 					<div class="mcs-caption-wrap">
 						<div class="mcs-caption-head">
-							<strong>وصف الصورة والروابط</strong><small id="mcs-caption-progress"></small>
+							<strong>جميع روابط الخبر — نص واحد</strong><small id="mcs-caption-progress"></small>
 						</div>
 						<textarea id="mcs-caption" rows="5" readonly spellcheck="false"></textarea>
 					</div>
 					<div class="mcs-steps">
 						<b>ترتيب المشاركة الصحيح على الكمبيوتر:</b>
 						<span>1. انسخ الصورة، ثم الصقها في واتساب ويب أو سطح المكتب باستخدام Ctrl+V.</span>
-						<span>2. بعد ظهور الصورة داخل واتساب، انسخ وصف الصورة والصقه أسفلها قبل الإرسال.</span>
-						<span>3. لو الروابط كثيرة، انسخ بقية الأجزاء وأرسلها كرسائل نصية تالية.</span>
+						<span>2. انسخ كل الروابط مرة واحدة. الصقها في وصف الصورة إذا قبلها واتساب بالكامل.</span>
+						<span>3. لو تجاوز النص حد وصف الصور، أرسل الصورة ثم الصق كل الروابط كرسالة نصية واحدة.</span>
 					</div>
 				</div>
 				<footer class="mcs-footer">
 					<button type="button" id="mcs-copy-image" class="mcs-primary" disabled>1. نسخ الصورة</button>
 					<button type="button" id="mcs-download-image" disabled>تحميل PNG</button>
-					<button type="button" id="mcs-copy-caption" disabled>2. نسخ الوصف</button>
-					<button type="button" id="mcs-next-caption" hidden>نسخ الجزء التالي</button>
+					<button type="button" id="mcs-copy-caption" disabled>2. نسخ كل الروابط</button>
 					<a href="https://web.whatsapp.com/" target="_blank" rel="noopener noreferrer">فتح واتساب ويب ↗</a>
 				</footer>
 				<div id="mcs-toast" role="status" aria-live="polite"></div>
@@ -196,8 +196,9 @@ final class Mubdaa_Central_Share {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( 'Not authorized', '', array( 'response' => 403 ) );
 		}
-		$key = isset( $_GET['batch'] ) ? sanitize_key( wp_unslash( $_GET['batch'] ) ) : '';
-		if ( strlen( $key ) !== 32 ) {
+		// sanitize_key() lowercases mixed-case secrets and breaks transient lookup and nonce.
+		$key = isset( $_GET['batch'] ) && is_string( $_GET['batch'] ) ? sanitize_text_field( wp_unslash( $_GET['batch'] ) ) : '';
+		if ( ! preg_match( '/^[A-Za-z0-9]{32}$/D', $key ) ) {
 			wp_die( 'Invalid request', '', array( 'response' => 400 ) );
 		}
 		check_ajax_referer( 'mcs_source_' . $key );
@@ -224,7 +225,7 @@ final class Mubdaa_Central_Share {
 				$url,
 				array(
 					'timeout'             => 15,
-					'redirection'         => 0,
+					'redirection'         => 3, // Safe redirects validated by wp_safe_remote_get.
 					'limit_response_size' => self::MAX_IMAGE_BYTES + 1,
 					'headers'             => array( 'Accept' => 'image/jpeg,image/png,image/webp' ),
 				)
@@ -244,7 +245,8 @@ final class Mubdaa_Central_Share {
 		if ( ! is_array( $info ) || empty( $info['mime'] ) ||
 			! in_array( $info['mime'], array( 'image/jpeg', 'image/png', 'image/webp' ), true ) ||
 			(int) $info[0] < 1 || (int) $info[1] < 1 ||
-			(int) $info[0] > 12000 || (int) $info[1] > 12000 ) {
+			(int) $info[0] > 12000 || (int) $info[1] > 12000 ||
+			( (int) $info[0] * (int) $info[1] ) > self::MAX_IMAGE_PIXELS ) {
 			wp_die( 'Unsupported image file', '', array( 'response' => 422 ) );
 		}
 		nocache_headers();
