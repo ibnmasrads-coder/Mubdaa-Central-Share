@@ -19,6 +19,10 @@ jobs:
           php -l tests/isolation-smoke.php
       - name: WordPress isolation smoke
         run: php tests/isolation-smoke.php
+      - name: Real image endpoint and mixed-case nonce regression
+        run: |
+          php tests/image-endpoint-smoke.php > /tmp/mcs-endpoint-image.png
+          php -r 'if (!getimagesize("/tmp/mcs-endpoint-image.png")) { exit(1); }'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
