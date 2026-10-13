@@ -46,8 +46,7 @@
 
   function findLink(html) {
     if (!html || typeof html !== 'string') return '';
-    const root = document.createElement('div');
-    root.innerHTML = html;
+    const root = new DOMParser().parseFromString(html, 'text/html');
     const anchor = root.querySelector('a.mainwp-may-hide-referrer[target="_blank"]');
     return anchor ? safeUrl(anchor.getAttribute('href')) : '';
   }
@@ -132,6 +131,7 @@
     if (state.dismissed) return;
     if (!state.opened) {
       state.opened = true;
+      installReopenButton();
       const panel = el('mcs-share-panel');
       if (!panel) return;
       panel.hidden = false;
@@ -141,6 +141,22 @@
     renderSites();
     if (!mcsShare.hasImage) warning(mcsShare.strings.noImage);
     scheduleCard();
+  }
+
+  function installReopenButton() {
+    const modal = el('mainwp-posting-post-modal');
+    const actions = modal?.querySelector('.actions');
+    if (!actions || el('mcs-reopen')) return;
+    const button = document.createElement('button');
+    button.id = 'mcs-reopen';
+    button.type = 'button';
+    button.className = 'ui primary button';
+    button.textContent = 'إعادة فتح مشاركة واتساب';
+    button.addEventListener('click', () => {
+      state.dismissed = false;
+      el('mcs-share-panel').hidden = false;
+    });
+    actions.prepend(button);
   }
 
   function warning(s) {
