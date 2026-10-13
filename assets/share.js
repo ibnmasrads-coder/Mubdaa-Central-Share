@@ -359,6 +359,11 @@
       renderSites();
     });
     el('mcs-title').addEventListener('input', scheduleCard);
+    el('mcs-retry-image').addEventListener('click', () => {
+      el('mcs-retry-image').hidden = true;
+      el('mcs-image-state').textContent = 'جاري إعادة تحميل الصورة…';
+      loadImageEarly();
+    });
     el('mcs-copy-image').addEventListener('click', copyImage);
     el('mcs-download-image').addEventListener('click', downloadImage);
     el('mcs-copy-caption').addEventListener('click', async () => {
@@ -392,10 +397,12 @@
       if (!/^image\/(jpeg|png|webp)$/.test(blob.type) || !blob.size) {
         throw new Error('استجابة الخادم ليست ملف صورة JPEG/PNG/WebP صالحًا');
       }
+      if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
       state.imageUrl = URL.createObjectURL(blob);
       sourceImage.onload = function () {
         state.image = sourceImage;
         state.imageError = '';
+        el('mcs-retry-image').hidden = true;
         if (state.opened) {
           warning('');
           scheduleCard();
@@ -416,6 +423,7 @@
     const message = mcsShare.strings.imageError + ' (' + state.imageError + ')';
     warning(message);
     el('mcs-image-state').textContent = message;
+    el('mcs-retry-image').hidden = false;
     console.warn('[Mubdaa Central Share] Source photo failed:', state.imageError);
   }
 
