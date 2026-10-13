@@ -17,6 +17,7 @@ jobs:
           sudo update-alternatives --set php /usr/bin/php8.3 || true
           php -l mubdaa-central-share.php
           php -l tests/isolation-smoke.php
+          php -l includes/class-shortlinks.php
       - name: WordPress isolation smoke
         run: php tests/isolation-smoke.php
       - name: Real image endpoint and mixed-case nonce regression
@@ -26,25 +27,35 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install and bundle document generators (locally served, no CDN)
+        run: |
+          npm install --no-save --silent jsdom@26 jquery@3 esbuild@0.25 pdf-lib@1.17.1 jszip@3.10.1
+          npx esbuild assets/document-export.js --bundle --platform=browser --format=iife --target=es2020 --minify --outfile=assets/documents.bundle.js
+          node --check assets/documents.bundle.js
       - name: JavaScript syntax
-        run: node --check assets/share.js
+        run: |
+          node --check assets/share.js
+          node --check assets/document-export.js
       - name: Browser-level MainWP popup smoke
         run: |
-          npm install --no-save --silent jsdom@26 jquery@3
           node tests/browser-smoke.cjs
+          npx esbuild assets/document-export.js --bundle --platform=node --format=cjs --outfile=tests/document-export-build.cjs
+          node tests/document-smoke.cjs
       - name: Package expectations
         run: |
           grep -q "Plugin Name: Mubdaa Central Share" mubdaa-central-share.php
           grep -q "mcs_featured_image" mubdaa-central-share.php
+          grep -q "mainwp_bulkposting_done" includes/class-shortlinks.php
           grep -q "mainwp_post_postingbulk" assets/share.js
           grep -q "navigator.clipboard.write" assets/share.js
           ! grep -q "sendMessage(" assets/share.js
 
       - name: Build development WordPress ZIP (tests excluded)
         run: |
-          mkdir -p dist/mubdaa-central-share/assets
+          mkdir -p dist/mubdaa-central-share/assets dist/mubdaa-central-share/includes
           cp mubdaa-central-share.php dist/mubdaa-central-share/
-          cp assets/share.js assets/share.css dist/mubdaa-central-share/assets/
+          cp includes/class-shortlinks.php dist/mubdaa-central-share/includes/
+          cp assets/share.js assets/share.css assets/documents.bundle.js dist/mubdaa-central-share/assets/
           (cd dist && zip -qr mubdaa-central-share-dev.zip mubdaa-central-share)
           unzip -l dist/mubdaa-central-share-dev.zip
       - uses: actions/upload-artifact@v4
