@@ -24,6 +24,10 @@ jobs:
           node-version: '22'
       - name: JavaScript syntax
         run: node --check assets/share.js
+      - name: Browser-level MainWP popup smoke
+        run: |
+          npm install --no-save --silent jsdom@26 jquery@3
+          node tests/browser-smoke.cjs
       - name: Package expectations
         run: |
           grep -q "Plugin Name: Mubdaa Central Share" mubdaa-central-share.php
