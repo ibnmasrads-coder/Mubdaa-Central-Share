@@ -31,3 +31,16 @@ jobs:
           grep -q "mainwp_post_postingbulk" assets/share.js
           grep -q "navigator.clipboard.write" assets/share.js
           ! grep -q "sendMessage(" assets/share.js
+
+      - name: Build development WordPress ZIP (tests excluded)
+        run: |
+          mkdir -p dist/mubdaa-central-share/assets
+          cp mubdaa-central-share.php dist/mubdaa-central-share/
+          cp assets/share.js assets/share.css dist/mubdaa-central-share/assets/
+          (cd dist && zip -qr mubdaa-central-share-dev.zip mubdaa-central-share)
+          unzip -l dist/mubdaa-central-share-dev.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mubdaa-central-share-dev
+          path: dist/mubdaa-central-share-dev.zip
+          retention-days: 7
