@@ -32,6 +32,14 @@ async function setup(isAjax) {
   const { window } = dom;
   const $ = require('jquery')(window);
   window.jQuery = $;
+  window.fetch = async (_url, options) => {
+    const params = new URLSearchParams(options?.body || '');
+    const ids = params.getAll('sites[]');
+    const result = {};
+    if (ids.includes('101')) result['101'] = 'https://www.jawharksa.com/?p=310';
+    if (ids.includes('102')) result['102'] = 'https://www.bawsalamashhad.com/?p=875';
+    return { ok:true, json:async()=>({success:true,data:{links:result}}) };
+  };
   window.mcsShare = {
     title: 'خبر جديد',
     postId: 123,
@@ -71,9 +79,13 @@ async function main() {
   assert.equal(document.querySelectorAll('#mcs-sites input[type="checkbox"]').length, 2);
   assert.equal(document.getElementById('mcs-selected-count').textContent, '2 محدد');
   assert.match(document.getElementById('mcs-caption').value, /jawharksa.com/);
-  assert.equal(document.getElementById('mcs-caption').value.split('روابط الخبر:').length, 2);
+  assert.equal(document.getElementById('mcs-caption').value.split('\n').length, 2);
   assert.equal(document.getElementById('mcs-next-caption'), null, 'No legacy split caption button');
   assert.match(document.getElementById('mcs-caption').value, /bawsalamashhad.com/);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(document.getElementById('mcs-caption').value,
+    'https://www.jawharksa.com/?p=310\nhttps://www.bawsalamashhad.com/?p=875',
+    'Verified per-site share shortlinks replace long URLs after MainWP results');
 
   document.getElementById('mcs-select-none').click();
   assert.equal(document.getElementById('mcs-selected-count').textContent, '0 محدد');
