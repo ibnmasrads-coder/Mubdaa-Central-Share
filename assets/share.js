@@ -15,6 +15,8 @@
     captionText: '',
     imageError: '',
     imageUrl: '',
+    shortlinksReady: false,
+    shortlinksRequest: null,
     refreshTimer: 0
   };
 
@@ -61,6 +63,7 @@
         id: String(id),
         name: name || siteName(id),
         url: link,
+        shareUrl: old?.shareUrl || '',
         selected: old ? old.selected : true
       });
     }
@@ -118,7 +121,7 @@
       let name = parent?.querySelector('a[href*="managesites"]')?.textContent?.trim();
       if (!name) name = new URL(target).hostname;
       const id = String(index + 1);
-      state.sites.set(id, { id, name, url: target, selected: true });
+      state.sites.set(id, { id, name, url: target, shareUrl: '', selected: true });
     });
     state.expected = entries.length;
     if (entries.length) finish();
@@ -140,6 +143,7 @@
     }
     el('mcs-status').textContent = 'اكتمل النشر — ' + state.sites.size + ' موقع ناجح من ' + state.expected;
     renderSites();
+    fetchConfirmedShortlinks();
     if (state.imageError) showImageError();
     else if (state.image) scheduleCard();
     else el('mcs-image-state').textContent = 'جاري تحميل الصورة الأصلية…';
@@ -218,9 +222,11 @@
     el('mcs-selected-count').textContent = selected.length + ' محدد';
     // No arbitrary length cut, no splitting, one clipboard operation for every link.
     state.captionText = selected.length ?
-      'روابط الخبر:\n\n' + selected.map(s => s.name + '\n' + s.url).join('\n\n') : '';
+      selected.map(s => s.shareUrl || s.url).join('\n') : '';
     el('mcs-caption').value = state.captionText;
     el('mcs-copy-caption').disabled = !state.captionText;
+    if (el('mcs-download-pdf')) el('mcs-download-pdf').disabled = !state.cardReady || !selected.length;
+    if (el('mcs-download-docx')) el('mcs-download-docx').disabled = !state.cardReady || !selected.length;
     const length = state.captionText.length;
     if (!length) {
       el('mcs-caption-progress').textContent = 'لم يتم تحديد مواقع';
@@ -229,6 +235,49 @@
     } else {
       el('mcs-caption-progress').textContent = length + ' حرف — انسخ النص كاملًا';
     }
+  }
+
+  async function fetchConfirmedShortlinks() {
+    if (state.shortlinksRequest || !state.sites.size || !mcsShare.shortlinksEndpoint) return;
+    const ids = [...state.sites.keys()];
+    const params = new URLSearchParams();
+    params.set('action', 'mcs_shortlinks');
+    params.set('post_id', String(mcsShare.postId));
+    params.set('nonce', mcsShare.shortlinksNonce);
+    ids.forEach(id => params.append('sites[]', id));
+    state.shortlinksRequest = (async () => {
+      try {
+        const response = await fetch(mcsShare.shortlinksEndpoint, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+          body: params.toString()
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        if (!data.success) throw new Error(data?.data?.message || 'No ID confirmation');
+        const links = data?.data?.links || {};
+        let confirmed = 0;
+        ids.forEach(id => {
+          const site = state.sites.get(id);
+          if (site && typeof links[id] === 'string' && /^https?:\/\//.test(links[id])) {
+            site.shareUrl = links[id];
+            confirmed++;
+          }
+        });
+        state.shortlinksReady = true;
+        recalcCaption();
+        if (confirmed < ids.length) {
+          toast('تم تأكيد روابط قصيرة لـ ' + confirmed + ' من ' + ids.length +
+            ' موقع؛ بقية الروابط ستظل أصلية منعًا لتخمين معرّف المقال.');
+        }
+      } catch (error) {
+        console.warn('[Mubdaa Central Share] Could not confirm child IDs', error);
+        toast('تعذر جلب معرّفات المقالات؛ الروابط الأصلية محفوظة كبديل آمن.');
+      } finally {
+        state.shortlinksRequest = null;
+      }
+    })();
   }
 
   function wrap(ctx, title, maxWidth) {
@@ -295,6 +344,8 @@
     try {
       state.cardBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
       state.cardReady = !!state.cardBlob;
+      el('mcs-download-pdf').disabled = !state.cardReady || !selectedSites().length;
+      el('mcs-download-docx').disabled = !state.cardReady || !selectedSites().length;
       el('mcs-copy-image').disabled = !state.cardReady;
       el('mcs-download-image').disabled = !state.cardReady;
       el('mcs-image-state').textContent = state.cardReady ? 'الصورة الحقيقية جاهزة للنسخ أو التحميل.' : 'فشل حفظ بطاقة الصورة.';
@@ -366,12 +417,48 @@
     });
     el('mcs-copy-image').addEventListener('click', copyImage);
     el('mcs-download-image').addEventListener('click', downloadImage);
+    el('mcs-download-pdf').addEventListener('click', () => exportFile('pdf'));
+    el('mcs-download-docx').addEventListener('click', () => exportFile('docx'));
     el('mcs-copy-caption').addEventListener('click', async () => {
       const text = state.captionText;
       if (text && await copyText(text)) {
         toast('تم نسخ الروابط كلها (' + selectedSites().length + ' مواقع) دفعة واحدة، دون حذف أو تقسيم.');
       }
     });
+  }
+
+  async function exportFile(kind) {
+    const button = el(kind === 'pdf' ? 'mcs-download-pdf' : 'mcs-download-docx');
+    if (!state.cardReady || !state.image || !window.MCSExport) {
+      toast('ملف الصورة أو مكتبة التصدير غير جاهزة.'); return;
+    }
+    button.disabled = true;
+    try {
+      // Preserve the unmodified photo in Word; PDF uses the titled ready-made image card.
+      const src = state.image;
+      const scale = Math.min(1, 1600 / Math.max(src.naturalWidth, src.naturalHeight));
+      const w = Math.max(1,Math.round(src.naturalWidth*scale));
+      const h = Math.max(1,Math.round(src.naturalHeight*scale));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(src,0,0,w,h);
+      const photoBlob = await new Promise(resolve=>cv.toBlob(resolve,'image/png'));
+      if (!photoBlob) throw new Error('فشل إنشاء نسخة الصورة الأصلية للملف');
+      const data = {
+        title:el('mcs-title').value.trim() || mcsShare.title,
+        cardBlob:state.cardBlob,
+        photoBlob,
+        photoWidth:w,
+        photoHeight:h,
+        sites:selectedSites().map(s=>({url:s.shareUrl || s.url}))
+      };
+      if (!data.sites.length) throw new Error('اختر موقعًا واحدًا على الأقل');
+      await window.MCSExport[kind](data);
+      toast('تم تجهيز ' + (kind === 'pdf' ? 'PDF' : 'Word') + ' للتنزيل. أرفقه في واتساب من خيار المستندات.');
+    } catch (err) {
+      toast('تعذر إنشاء الملف: ' + (err?.message || String(err)));
+      console.error('[Mubdaa Central Share] Document export failed',err);
+    } finally { button.disabled = false; }
   }
 
   async function loadImageEarly() {
