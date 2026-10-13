@@ -29,7 +29,7 @@ final class Mubdaa_Central_Share {
 		}
 		// Don't inject UI anywhere else or modify MainWP classes/assets.
 		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-		return 'PostingBulkPost' === $page;
+		return 'postingbulkpost' === $page;
 	}
 
 	private static function find_image( int $post_id ): array {
