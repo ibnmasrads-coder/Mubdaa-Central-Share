@@ -32,3 +32,29 @@ GPL-2.0-or-later.
 - Added functional PHP image endpoint and ten-site long-message regression tests.
 
 The real client image still needs confirmation on the live MainWP instance. The plugin has **not** been deployed and no existing MainWP/Bridge code is touched.
+
+
+## v0.3.0-dev — Verified shortlinks and document exports
+
+The original copy PNG / download PNG / copy full text workflow remains available. New independent buttons download **PDF** and **Word (.docx)**.
+
+- MainWP's successful child post IDs are captured via \`mainwp_bulkposting_done\` while the original MainWP publishing flow is unchanged.
+- Each link is generated from that particular site's confirmed remote post ID: \`https://site.example/?p=123\`. Existing pretty permalinks are never changed. If confirmation is unavailable, the plugin retains the original published URL rather than guessing a new ID.
+- The share caption contains only URLs, one per line, with no site names.
+- PDF uses the existing headline+image card and **selectable live text hyperlinks** with clickable PDF annotations; links may span multiple pages.
+- Word uses an editable Arabic headline, the original featured photo and native Word clickable hyperlinks.
+- Both exports are produced locally in the operator's browser from a bundled copy of pdf-lib and JSZip; the plugin does not send material to third parties.
+- Downloaded files can be attached to WhatsApp Web/Desktop as **Documents** via the attachment UI or drag-and-drop. Pasting an entire PDF/DOCX file using Ctrl+V is not reliably supported by WhatsApp and is not promised.
+- No persistent share history; child ID mapping is stored only in short-lived, user-scoped WordPress transients.
+- Desktop only; WhatsApp API automation is not used.
+
+## Manual acceptance steps
+
+1. Publish a new article with a featured image to at least two sites and confirm the share panel still opens immediately.
+2. Wait for short URLs to appear, check they resolve to **the right article** on every child site, and confirm the selected URL list is a single, one-click copy.
+3. Copy PNG and paste into WhatsApp Web/Desktop; send full text as a media caption when short enough, otherwise as one subsequent text message.
+4. Download PDF and DOCX, open both on Windows, click and copy several links (first, middle, last); verify the picture/title are correct.
+5. Test one failed child-site publish: it must not enter the share link list.
+6. Test a publication with no image: document export should remain disabled, normal publication unaffected.
+
+The GitHub CI exercises 30 external links and validates real PDF clickable annotations and DOCX hyperlink relationships. **Live WhatsApp / MainWP deployment QA remains required before production approval**.
