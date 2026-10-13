@@ -20,7 +20,7 @@ function html(ajax) {
   '<div id="mcs-sites"></div><canvas id="mcs-canvas"></canvas><div id="mcs-image-state"></div><button id="mcs-retry-image" hidden></button>' +
   '<textarea id="mcs-caption"></textarea><div id="mcs-caption-progress"></div>' +
   '<button id="mcs-copy-image" disabled></button><button id="mcs-download-image" disabled></button>' +
-  '<button id="mcs-copy-caption" disabled></button>' +
+  '<button id="mcs-copy-caption" disabled></button><button id="mcs-download-pdf" disabled></button><button id="mcs-download-docx" disabled></button>' +
   '<div id="mcs-toast"></div></section></body></html>';
 }
 
@@ -34,6 +34,9 @@ async function setup(isAjax) {
   window.jQuery = $;
   window.mcsShare = {
     title: 'خبر جديد',
+    postId: 123,
+    shortlinksEndpoint: 'https://main.example.com/wp-admin/admin-ajax.php',
+    shortlinksNonce: 'test',
     hasImage: false,
     maxCaption: 900,
     strings: { noImage: 'لا توجد صورة بارزة.', imageError: 'فشل الصورة', copyFailed: 'فشل النسخ' }
