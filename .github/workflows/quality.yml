@@ -1,0 +1,54 @@
+name: Code quality
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-and-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax (8.0)
+        run: |
+          sudo update-alternatives --set php /usr/bin/php8.3 || true
+          php -l mubdaa-central-share.php
+          php -l tests/isolation-smoke.php
+      - name: WordPress isolation smoke
+        run: php tests/isolation-smoke.php
+      - name: Real image endpoint and mixed-case nonce regression
+        run: |
+          php tests/image-endpoint-smoke.php > /tmp/mcs-endpoint-image.png
+          php -r 'if (!getimagesize("/tmp/mcs-endpoint-image.png")) { exit(1); }'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JavaScript syntax
+        run: node --check assets/share.js
+      - name: Browser-level MainWP popup smoke
+        run: |
+          npm install --no-save --silent jsdom@26 jquery@3
+          node tests/browser-smoke.cjs
+      - name: Package expectations
+        run: |
+          grep -q "Plugin Name: Mubdaa Central Share" mubdaa-central-share.php
+          grep -q "mcs_featured_image" mubdaa-central-share.php
+          grep -q "mainwp_post_postingbulk" assets/share.js
+          grep -q "navigator.clipboard.write" assets/share.js
+          ! grep -q "sendMessage(" assets/share.js
+
+      - name: Build development WordPress ZIP (tests excluded)
+        run: |
+          mkdir -p dist/mubdaa-central-share/assets
+          cp mubdaa-central-share.php dist/mubdaa-central-share/
+          cp assets/share.js assets/share.css dist/mubdaa-central-share/assets/
+          (cd dist && zip -qr mubdaa-central-share-dev.zip mubdaa-central-share)
+          unzip -l dist/mubdaa-central-share-dev.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mubdaa-central-share-dev
+          path: dist/mubdaa-central-share-dev.zip
+          retention-days: 7

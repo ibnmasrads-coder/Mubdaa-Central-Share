@@ -1,0 +1,114 @@
+/* Mubdaa Central Share: scoped styles. Never override MainWP's modal or Semantic UI. */
+#mcs-share-panel[hidden], #mcs-share-panel [hidden] { display: none !important; }
+#mcs-share-panel {
+  position: fixed;
+  z-index: 2147483000;
+  inset: 12px 12px auto;
+  display: flex;
+  justify-content: center;
+  max-height: calc(100vh - 24px);
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, sans-serif;
+  color: #142235;
+  text-align: right;
+  box-sizing: border-box;
+}
+#mcs-share-panel *, #mcs-share-panel *::before, #mcs-share-panel *::after { box-sizing: border-box; }
+#mcs-share-panel .mcs-card {
+  pointer-events: auto;
+  width: min(770px, 100%);
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #d7dfeb;
+  box-shadow: 0 20px 60px rgba(6, 30, 62, .30);
+  border-radius: 16px;
+}
+#mcs-share-panel .mcs-header {
+  background: #10273d;
+  color: #fff;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-radius: 15px 15px 0 0;
+}
+#mcs-share-panel .mcs-header strong { display: block; font-size: 19px; line-height: 1.6; }
+#mcs-share-panel .mcs-header small { color: #bbd3e4; display: block; font-size: 12px; }
+#mcs-share-panel .mcs-dismiss {
+  border: 0; background: transparent; color: #e8f1fa; font-size: 29px;
+  width: 36px; height: 36px; cursor: pointer; padding: 0; line-height: 1;
+}
+#mcs-share-panel .mcs-content { padding: 17px 20px; display: grid; gap: 12px; }
+#mcs-share-panel .mcs-label { font-size: 12px; color: #4a5d71; font-weight: 700; }
+#mcs-share-panel .mcs-title-input, #mcs-share-panel #mcs-caption {
+  display: block; width: 100%; direction: rtl; border-radius: 8px; border: 1px solid #cdd8e3;
+  font-family: inherit; padding: 10px; font-size: 14px; resize: vertical; min-height: 55px;
+  background: #fff; color: #162c42;
+}
+#mcs-share-panel #mcs-caption { min-height: 105px; font-size: 12px; direction: rtl; }
+#mcs-share-panel .mcs-sites-header, #mcs-share-panel .mcs-caption-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font-size: 13px;
+}
+#mcs-share-panel .mcs-sites-header span, #mcs-share-panel .mcs-caption-head small {
+  font-size: 12px; color: #697b89;
+}
+#mcs-share-panel .mcs-select-actions { display: flex; gap: 7px; }
+#mcs-share-panel button, #mcs-share-panel .mcs-footer a {
+  font: inherit;
+  font-size: 12px;
+  border-radius: 7px;
+  border: 1px solid #cbd8e5;
+  padding: 7px 11px;
+  cursor: pointer;
+  color: #173753;
+  background: #f5f9fd;
+  text-decoration: none;
+  white-space: normal;
+}
+#mcs-share-panel button:disabled { opacity: .4; cursor: not-allowed; }
+#mcs-share-panel .mcs-sites {
+  border: 1px solid #e1e7ed;
+  border-radius: 10px;
+  max-height: 150px; overflow-y: auto;
+}
+#mcs-share-panel .mcs-site {
+  padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; border-bottom: 1px solid #ebeff4;
+}
+#mcs-share-panel .mcs-site:last-child { border-bottom: 0; }
+#mcs-share-panel .mcs-check { display: flex; gap: 9px; align-items: center; margin: 0; cursor: pointer; flex: 1; }
+#mcs-share-panel .mcs-check input { width: 17px; height: 17px; margin: 0; }
+#mcs-share-panel .mcs-site-name { font-size: 13px; font-weight: 650; line-height: 1.5; }
+#mcs-share-panel .mcs-site-name small { display: block; font-weight: 400; color: #73818a; font-size: 11px; direction: ltr; text-align: right; }
+#mcs-share-panel .mcs-order { display: flex; gap: 5px; }
+#mcs-share-panel .mcs-order button { padding: 3px 8px; font-size: 17px; }
+#mcs-share-panel .mcs-preview-wrap { display: grid; gap: 7px; }
+#mcs-share-panel .mcs-preview-wrap strong, #mcs-share-panel .mcs-caption-wrap strong { font-size: 13px; }
+#mcs-share-panel #mcs-canvas {
+  width: 100%; max-height: 205px; object-fit: contain; background: #f0f4f8;
+  border: 1px solid #dfe7ef; border-radius: 8px; display: block;
+}
+#mcs-share-panel .mcs-hint { font-size: 11px; color: #778999; }
+#mcs-share-panel .mcs-caption-wrap { display: grid; gap: 6px; }
+#mcs-share-panel .mcs-steps {
+  display: grid; gap: 3px; padding: 9px 11px;
+  color: #34526a; background: #eef6fb; border-radius: 9px; font-size: 11px;
+}
+#mcs-share-panel .mcs-warning { background: #fff2ea; color: #8d3c12; font-size: 12px; padding: 9px; border-radius: 7px; }
+#mcs-share-panel .mcs-footer {
+  display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px;
+  border-top: 1px solid #e3eaf2; background: #fbfdff; position: sticky; bottom: 0;
+}
+#mcs-share-panel .mcs-footer .mcs-primary { background: #136c53; border-color: #136c53; color: #fff; font-weight: 700; }
+#mcs-share-panel #mcs-toast { padding: 0 20px 12px; font-size: 12px; color: #136c53; }
+@media (max-width: 700px) {
+  #mcs-share-panel { inset: 7px 7px auto; max-height: calc(100vh - 14px); }
+  #mcs-share-panel .mcs-card { max-height: calc(100vh - 14px); }
+  #mcs-share-panel .mcs-content { padding: 12px; }
+  #mcs-share-panel .mcs-footer { padding: 10px 12px; }
+}

@@ -1,0 +1,34 @@
+name: Build Central Share ZIP
+
+on:
+  push:
+    branches: [ "feature/mainwp-desktop-share-v0.1" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - name: PHP syntax check
+        run: php -l mubdaa-central-share.php
+      - name: JavaScript syntax check
+        run: node --check assets/share.js
+      - name: Package WordPress plugin
+        run: |
+          mkdir -p dist/mubdaa-central-share/assets
+          cp mubdaa-central-share.php dist/mubdaa-central-share/
+          cp assets/share.js assets/share.css dist/mubdaa-central-share/assets/
+          cd dist
+          zip -r -9 ../Mubdaa-Central-Share-v0.1.0-dev.zip mubdaa-central-share
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mubdaa-Central-Share-v0.1.0-dev
+          path: Mubdaa-Central-Share-v0.1.0-dev.zip
+          retention-days: 14
