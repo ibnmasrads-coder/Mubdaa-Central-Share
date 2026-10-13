@@ -12,8 +12,9 @@
     image: null,
     cardBlob: null,
     cardReady: false,
-    captionChunks: [],
-    captionIndex: 0,
+    captionText: '',
+    imageError: '',
+    imageUrl: '',
     refreshTimer: 0
   };
 
@@ -139,8 +140,9 @@
     }
     el('mcs-status').textContent = 'اكتمل النشر — ' + state.sites.size + ' موقع ناجح من ' + state.expected;
     renderSites();
-    if (!mcsShare.hasImage) warning(mcsShare.strings.noImage);
-    scheduleCard();
+    if (state.imageError) showImageError();
+    else if (state.image) scheduleCard();
+    else el('mcs-image-state').textContent = 'جاري تحميل الصورة الأصلية…';
   }
 
   function installReopenButton() {
@@ -214,31 +216,19 @@
   function recalcCaption() {
     const selected = selectedSites();
     el('mcs-selected-count').textContent = selected.length + ' محدد';
-    const groups = selected.map(s => s.name + '\n' + s.url);
-    const chunks = [];
-    let current = 'روابط الخبر:\n\n';
-    for (const group of groups) {
-      const next = (current ? current + (current.endsWith('\n\n') ? '' : '\n\n') : '') + group;
-      if (current && next.length > mcsShare.maxCaption && current !== 'روابط الخبر:\n\n') {
-        chunks.push(current);
-        current = group;
-      } else {
-        current = next;
-      }
+    // No arbitrary length cut, no splitting, one clipboard operation for every link.
+    state.captionText = selected.length ?
+      'روابط الخبر:\n\n' + selected.map(s => s.name + '\n' + s.url).join('\n\n') : '';
+    el('mcs-caption').value = state.captionText;
+    el('mcs-copy-caption').disabled = !state.captionText;
+    const length = state.captionText.length;
+    if (!length) {
+      el('mcs-caption-progress').textContent = 'لم يتم تحديد مواقع';
+    } else if (length > mcsShare.captionGuide) {
+      el('mcs-caption-progress').textContent = length + ' حرف — قد يتجاوز حد وصف الصورة؛ الصقه كرسالة نصية واحدة بعد الصورة';
+    } else {
+      el('mcs-caption-progress').textContent = length + ' حرف — انسخ النص كاملًا';
     }
-    if (groups.length) chunks.push(current);
-    state.captionChunks = chunks;
-    state.captionIndex = 0;
-    renderCaption();
-  }
-
-  function renderCaption() {
-    const chunks = state.captionChunks;
-    el('mcs-caption').value = chunks[0] || '';
-    el('mcs-caption-progress').textContent = chunks.length ? ('الجزء الأول من ' + chunks.length) : '';
-    el('mcs-copy-caption').disabled = chunks.length === 0;
-    el('mcs-next-caption').hidden = chunks.length < 2;
-    if (chunks.length > 1) el('mcs-next-caption').textContent = 'نسخ الجزء التالي (2/' + chunks.length + ')';
   }
 
   function wrap(ctx, title, maxWidth) {
@@ -349,7 +339,9 @@
       const field = el('mcs-caption');
       field.value = value;
       field.focus(); field.select();
-      return document.execCommand('copy');
+      const copied = document.execCommand('copy');
+      field.value = state.captionText;
+      return copied;
     }
   }
 
@@ -370,32 +362,61 @@
     el('mcs-copy-image').addEventListener('click', copyImage);
     el('mcs-download-image').addEventListener('click', downloadImage);
     el('mcs-copy-caption').addEventListener('click', async () => {
-      const text = state.captionChunks[0];
-      if (text && await copyText(text)) toast('تم نسخ وصف الصورة. الصقه الآن في خانة Caption بواتساب.');
-    });
-    el('mcs-next-caption').addEventListener('click', async () => {
-      const next = state.captionIndex + 1;
-      if (next >= state.captionChunks.length) return;
-      const text = state.captionChunks[next];
-      if (await copyText(text)) {
-        state.captionIndex = next;
-        el('mcs-caption').value = text;
-        el('mcs-caption-progress').textContent = 'الجزء ' + (next + 1) + ' من ' + state.captionChunks.length;
-        el('mcs-next-caption').textContent = 'نسخ الجزء التالي (' + (next + 2) + '/' + state.captionChunks.length + ')';
-        el('mcs-next-caption').hidden = next + 1 >= state.captionChunks.length;
-        toast('تم نسخ الجزء ' + (next + 1) + '؛ أرسله كرسالة نصية بعد الصورة.');
+      const text = state.captionText;
+      if (text && await copyText(text)) {
+        toast('تم نسخ الروابط كلها (' + selectedSites().length + ' مواقع) دفعة واحدة، دون حذف أو تقسيم.');
       }
     });
   }
 
-  function loadImageEarly() {
-    if (!mcsShare.hasImage) return;
-    sourceImage.onload = function () {
-      state.image = sourceImage;
-      if (state.opened) scheduleCard();
-    };
-    sourceImage.onerror = function () { if (state.opened) warning(mcsShare.strings.imageError); };
-    sourceImage.src = mcsShare.imageEndpoint;
+  async function loadImageEarly() {
+    if (!mcsShare.hasImage) {
+      state.imageError = mcsShare.strings.noImage;
+      return;
+    }
+    try {
+      // Download first, while the central post and its media reference still exist.
+      // A fetch response preserves the actual HTTP error; Image.onerror does not.
+      const response = await fetch(mcsShare.imageEndpoint, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Accept': 'image/png,image/jpeg,image/webp' }
+      });
+      if (!response.ok) {
+        const html = await response.text();
+        const parsed = new DOMParser().parseFromString(html, 'text/html');
+        const detail = (parsed.body?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 130);
+        throw new Error('HTTP ' + response.status + (detail ? ': ' + detail : ''));
+      }
+      const blob = await response.blob();
+      if (!/^image\/(jpeg|png|webp)$/.test(blob.type) || !blob.size) {
+        throw new Error('استجابة الخادم ليست ملف صورة JPEG/PNG/WebP صالحًا');
+      }
+      state.imageUrl = URL.createObjectURL(blob);
+      sourceImage.onload = function () {
+        state.image = sourceImage;
+        state.imageError = '';
+        if (state.opened) {
+          warning('');
+          scheduleCard();
+        }
+      };
+      sourceImage.onerror = function () {
+        state.imageError = 'المتصفح لم يتمكن من قراءة الصورة المستلمة';
+        if (state.opened) showImageError();
+      };
+      sourceImage.src = state.imageUrl;
+    } catch (err) {
+      state.imageError = err?.message || 'فشل غير معروف';
+      if (state.opened) showImageError();
+    }
+  }
+
+  function showImageError() {
+    const message = mcsShare.strings.imageError + ' (' + state.imageError + ')';
+    warning(message);
+    el('mcs-image-state').textContent = message;
+    console.warn('[Mubdaa Central Share] Source photo failed:', state.imageError);
   }
 
   $(function () {
