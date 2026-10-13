@@ -44,6 +44,13 @@ jobs:
           node tests/browser-smoke.cjs
           npx esbuild assets/document-export.js --bundle --platform=node --format=cjs --outfile=tests/document-export-build.cjs
           node tests/document-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcs-document-qa
+          path: |
+            /tmp/mcs-test-export.pdf
+            /tmp/mcs-test-export.docx
+          retention-days: 1
       - name: Package expectations
         run: |
           grep -q "Plugin Name: Mubdaa Central Share" mubdaa-central-share.php
