@@ -90,9 +90,16 @@ final class Mubdaa_Central_Share {
 			self::VERSION
 		);
 		wp_enqueue_script(
+			'mcs-documents',
+			plugins_url( 'assets/documents.bundle.js', __FILE__ ),
+			array(),
+			self::VERSION,
+			true
+		);
+		wp_enqueue_script(
 			'mcs-share',
 			plugins_url( 'assets/share.js', __FILE__ ),
-			array( 'jquery' ),
+			array( 'jquery', 'mcs-documents' ),
 			self::VERSION,
 			true
 		);
@@ -112,6 +119,9 @@ final class Mubdaa_Central_Share {
 				),
 				'expectedSites'  => 0, // JS derives this from MainWP's own queued site rows.
 				'webUrl'         => 'https://web.whatsapp.com/',
+				'postId'         => $post_id,
+				'shortlinksEndpoint' => admin_url( 'admin-ajax.php' ),
+				'shortlinksNonce' => wp_create_nonce( 'mcs_shortlinks_' . $post_id ),
 				'captionGuide'   => 1024, // Image-caption size guidance. No truncation or splitting.
 				'strings' => array(
 					'noImage'       => 'لا توجد صورة بارزة يمكن الوصول إليها لهذا المقال. لن نجهز مشاركة بدون صورة.',
@@ -166,6 +176,8 @@ final class Mubdaa_Central_Share {
 					<button type="button" id="mcs-copy-image" class="mcs-primary" disabled>1. نسخ الصورة</button>
 					<button type="button" id="mcs-download-image" disabled>تحميل PNG</button>
 					<button type="button" id="mcs-copy-caption" disabled>2. نسخ كل الروابط</button>
+					<button type="button" id="mcs-download-pdf" disabled>تنزيل PDF</button>
+					<button type="button" id="mcs-download-docx" disabled>تنزيل Word</button>
 					<a href="https://web.whatsapp.com/" target="_blank" rel="noopener noreferrer">فتح واتساب ويب ↗</a>
 				</footer>
 				<div id="mcs-toast" role="status" aria-live="polite"></div>
@@ -259,4 +271,5 @@ final class Mubdaa_Central_Share {
 	}
 }
 
+require_once __DIR__ . '/includes/class-shortlinks.php';
 Mubdaa_Central_Share::boot();
