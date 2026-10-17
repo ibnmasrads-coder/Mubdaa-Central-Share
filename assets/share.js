@@ -254,7 +254,7 @@
     const links = selectedLinks();
     el('mcs-selected-count').textContent = links.length + ' محدد';
     // Always retain the full list, regardless of optional grouping or character count.
-    state.captionText = links.join('\\n');
+    state.captionText = links.join('\n');
     el('mcs-caption').value = state.captionText;
     el('mcs-copy-caption').disabled = !state.captionText;
     if (el('mcs-download-pdf')) el('mcs-download-pdf').disabled = !state.cardReady || !links.length;
@@ -275,7 +275,7 @@
         groups[Math.min(count - 1, Math.floor(index * count / links.length))].push(link);
       });
       groups.forEach((group, index) => {
-        const value = group.join('\\n');
+        const value = group.join('\n');
         const row = document.createElement('div');
         row.className = 'mcs-group';
         const header = document.createElement('div');
