@@ -27,6 +27,8 @@ $GLOBALS['mcs_transients'] = array();
 function add_action($name,$callback,$priority=10,$args=1) {}
 function current_user_can($cap) { return $cap === 'manage_options'; }
 function absint($v) { return abs((int)$v); }
+function get_post($id) { return (object)array('ID'=>$id, 'post_type'=>'post'); }
+function get_the_title($id) { return 'خبر جديد'; }
 function wp_strip_all_tags($s) { return strip_tags((string)$s); }
 function get_current_user_id() { return 9; }
 function set_transient($name,$data,$ttl) { $GLOBALS['mcs_transients'][$name] = $data; }
@@ -56,6 +58,12 @@ try { MCS_Post_Recovery::begin(); } catch(Response $e) {
     check($e->success && $e->data['status']==='ready','begin accepted');
 }
 check($GLOBALS['mcs_transients'][$session]['first_publish_started'] === true,'window stamped');
+unset($GLOBALS['mcs_transients'][$session]);
+try { MCS_Post_Recovery::begin(); } catch(Response $e) {
+    check($e->success && $e->data['status']==='ready','source rebuilt after long edit without guessing');
+}
+check($GLOBALS['mcs_transients'][$session]['first_publish_started'] === true,'rebuilt session stamped');
+
 $now=time();
 \MainWP\Dashboard\MainWP_Connect::$posts=array(array(
     'id'=>1100488,'title'=>'خبر جديد','status'=>'publish','dts'=>$now-30
