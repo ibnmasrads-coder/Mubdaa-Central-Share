@@ -22,5 +22,10 @@ check(MCS_Post_Recovery::unique_match(array($wrong),$title,$now,$now)['status']=
 $draft = $good; $draft['status'] = 'draft';
 check(MCS_Post_Recovery::unique_match(array($draft),$title,$now,$now)['status']==='not_found','draft never counted as published');
 check(MCS_Post_Recovery::unique_match(array_fill(0,50,$good),$title,$now,$now)['status']==='unknown','bounded/truncated response must remain uncertain');
-check(MCS_Post_Recovery::unique_match(array('error'=>'NOMAINWP'),$title,$now,$now)['status']==='not_found','unusable child response cannot invent ID');
+check(MCS_Post_Recovery::unique_match(array('error'=>'NOMAINWP'),$title,$now,$now)['status']==='unknown','unusable child response cannot invent ID');
+check(MCS_Post_Recovery::unique_match(array(),$title,$now,$now)['status']==='not_found','empty child list is not a confirmed post');
+$skewed = $good; $skewed['dts'] = $now - 181;
+check(MCS_Post_Recovery::unique_match(array($skewed),$title,$now,$now)['status']==='not_found','outside recent window rejected');
+$invalid = $good; $invalid['id'] = 'oops';
+check(MCS_Post_Recovery::unique_match(array($invalid),$title,$now,$now)['status']==='not_found','invalid child IDs rejected');
 echo "PASS: strict unique published-title readback, recency, status, ambiguity and bounded results\n";
