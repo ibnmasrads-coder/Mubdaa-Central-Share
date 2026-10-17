@@ -42,8 +42,21 @@ async function main() {
   assert.equal((rel.match(/TargetMode="External"/g)||[]).length,30,'DOCX clickable external relationships');
   assert.ok(rel.includes('news30.example.com/?p=229'),'Last site is included');
   assert.ok(!xml.includes('%D8'),'No encoded Arabic URL slug in document');
+  // Missing source image must not suppress a document containing all links.
+  const noImagePdf = await buildPdf({cardBlob:null,sites});
+  const noImagePdfDoc = await PDFDocument.load(new Uint8Array(await noImagePdf.arrayBuffer()));
+  let noImagePdfLinks = 0;
+  for (const p of noImagePdfDoc.getPages()) noImagePdfLinks += p.node.Annots()?.size() || 0;
+  assert.equal(noImagePdfLinks, 30, 'PDF without image retains all 30 clickable links');
+  const noImageWord = await buildDocx({title:'خبر بلا صورة',photoBlob:null,photoWidth:0,photoHeight:0,sites});
+  const noImageZip = await JSZip.loadAsync(await noImageWord.arrayBuffer());
+  assert.ok(!noImageZip.file('word/media/photo.png'), 'No dummy or broken image relationship');
+  const noImageRels = await noImageZip.file('word/_rels/document.xml.rels').async('string');
+  const noImageXml = await noImageZip.file('word/document.xml').async('string');
+  assert.equal((noImageRels.match(/TargetMode="External"/g) || []).length, 30);
+  assert.equal((noImageXml.match(/<w:hyperlink /g) || []).length, 30);
   fs.writeFileSync('/tmp/mcs-test-export.pdf', Buffer.from(pdfBytes));
   fs.writeFileSync('/tmp/mcs-test-export.docx', Buffer.from(await docxBlob.arrayBuffer()));
-  console.log('PASS: PDF /Word files, 30 clickable links, picture and Arabic title');
+  console.log('PASS: PDF/Word, 30 clickable links, image and image-free fallbacks');
 }
 main().catch(e=>{ console.error(e);process.exitCode=1; });
