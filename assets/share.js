@@ -379,8 +379,10 @@
     }
     state.recovering = false;
     const missing = state.failed.size;
+    const unknownNames = [...state.failed.values()].map(site => site.name).join('، ');
     el('mcs-recovery-status').textContent = restored + ' روابط تم استرجاعها بعد خطأ الاتصال؛ ' +
-      (missing ? missing + ' مواقع ما زالت غير مؤكدة. لا تعِد النشر قبل مراجعتها.' : 'جميع روابط المواقع أصبحت مؤكدة.');
+      (missing ? missing + ' مواقع غير مؤكدة: ' + unknownNames + ' — راجعها قبل إعادة النشر.' :
+        'كل المواقع التي وصلنا لنتيجتها لها روابط مؤكدة أو مسترجعة.');
     retry.hidden = !missing;
     el('mcs-status').textContent = 'روابط مؤكدة: ' + state.sites.size + ' من ' + state.expected;
   }
