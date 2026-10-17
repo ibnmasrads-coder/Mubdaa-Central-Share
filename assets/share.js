@@ -90,10 +90,11 @@
       if (String(p.get('post_id')) !== String(mcsShare.postId)) return null;
       const id = p.get('site_id');
       if (!id || !/^\d+$/.test(id) || Number(id) < 1) return null;
+      const total = Number(p.get('total') || 0);
       return {
-        siteId: p.get('site_id'),
+        siteId: id,
         postId: p.get('post_id'),
-        total: Math.min(500, Math.max(0, Number(p.get('total') || 0)))
+        total: Number.isFinite(total) ? Math.min(500, Math.max(0, total)) : 0
       };
     } catch (e) { return null; }
   }
