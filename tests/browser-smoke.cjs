@@ -93,7 +93,14 @@ async function main() {
   }]);
   assert.equal(panel.hidden, true, 'unrelated publication ignored');
   assert.equal(document.querySelectorAll('#mcs-sites .mcs-site').length, 0, 'no foreign post injected');
-  emit(101, '<span>Created <a class="mainwp-may-hide-referrer" target="_blank" href="https://www.jawharksa.com/article/">View Post</a></span>');
+  // Invalid MainWP total must not poison the completion counter with NaN.
+  ajax.$(document).trigger('ajaxSuccess', [{}, {
+    data:'action=mainwp_post_postingbulk&post_id=123&site_id=101&total=NaN'
+  }, {
+    result:'<a class="mainwp-may-hide-referrer" target="_blank" href="https://www.jawharksa.com/article/">View Post</a>'
+  }]);
+  assert.equal(panel.hidden, true, 'invalid batch total cannot prematurely finish');
+
   assert.equal(panel.hidden, true, 'panel waits for all sites');
   emit(102, '<span>Created <a class="mainwp-may-hide-referrer" target="_blank" href="https://www.bawsalamashhad.com/article/">View Post</a></span>');
   assert.equal(panel.hidden, false, 'panel immediately opens when last response arrives');
