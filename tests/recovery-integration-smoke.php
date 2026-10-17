@@ -11,12 +11,17 @@ namespace MainWP\Dashboard {
     final class MainWP_Connect {
         public static $posts = array();
         public static $throw = false;
+        public static $httpStatus = 200;
         public static $requests = array();
         public static function fetch_url_authed(&$website, $what, $params = array(),
             $check = false, $force = false, $retry = true) {
             self::$requests[] = array($website->id, $what, $params, $retry);
             if (self::$throw) throw new \Exception('HTTP 503');
-            return self::$posts;
+            // MainWP always appends this diagnostic envelope, even on success.
+            return array_merge(self::$posts, array('fetch_url_output'=>array(
+                'http_status'=>self::$httpStatus,
+                'connection_step'=>'verify_credentials'
+            )));
         }
     }
 }
@@ -81,6 +86,11 @@ $duplicate = array(array('id'=>1100499,'title'=>'خبر جديد','status'=>'pub
 try { MCS_Post_Recovery::lookup(); throw new \Exception('Unexpected response'); } catch(Response $e) {
     check($e->data['status']==='ambiguous','ambiguous must not produce URL');
 }
+\MainWP\Dashboard\MainWP_Connect::$httpStatus = 503;
+try { MCS_Post_Recovery::lookup(); throw new \Exception('Unexpected response'); } catch(Response $e) {
+    check($e->data['status']==='unreachable','non-2xx envelope must not produce a URL');
+}
+\MainWP\Dashboard\MainWP_Connect::$httpStatus = 200;
 \MainWP\Dashboard\MainWP_Connect::$throw = true;
 try { MCS_Post_Recovery::lookup(); throw new \Exception('Unexpected response'); } catch(Response $e) {
     check($e->data['status']==='unreachable','503 must remain unconfirmed');
