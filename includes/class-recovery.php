@@ -43,7 +43,17 @@ final class MCS_Post_Recovery {
 		$key = 'mcs_recovery_' . get_current_user_id() . '_' . $batch_id;
 		$source = get_transient( $key );
 		if ( ! is_array( $source ) || ! is_string( $source['title'] ?? null ) ) {
-			wp_send_json_error( array( 'message' => 'Recovery session expired; reload the posting page' ), 410 );
+			// A long editing session can outlive the transient. Recover it only while
+			// the exact dashboard source post still exists; never trust a client title.
+			$post = get_post( $batch_id );
+			if ( ! is_object( $post ) || (int) ( $post->ID ?? 0 ) !== $batch_id ||
+				! in_array( $post->post_type ?? '', array( 'post', 'page' ), true ) ) {
+				wp_send_json_error( array( 'message' => 'Recovery session expired; reload the posting page' ), 410 );
+			}
+			$source = array( 'title' => self::normal_title( (string) get_the_title( $batch_id ) ) );
+			if ( '' === $source['title'] ) {
+				wp_send_json_error( array( 'message' => 'Source title unavailable' ), 410 );
+			}
 		}
 		if ( empty( $source['first_publish_started'] ) ) {
 			$source['started'] = time();
