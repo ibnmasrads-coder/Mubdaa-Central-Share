@@ -85,6 +85,14 @@ async function main() {
       { result: markup }
     ]);
   }
+  // A second unrelated MainWP operation on this page must not enter this batch.
+  ajax.$(document).trigger('ajaxSuccess', [{}, {
+    data:'action=mainwp_post_postingbulk&post_id=999&site_id=102&total=2'
+  }, {
+    result:'<a class="mainwp-may-hide-referrer" target="_blank" href="https://evil.example.com/not-this-post/">View Post</a>'
+  }]);
+  assert.equal(panel.hidden, true, 'unrelated publication ignored');
+  assert.equal(document.querySelectorAll('#mcs-sites .mcs-site').length, 0, 'no foreign post injected');
   emit(101, '<span>Created <a class="mainwp-may-hide-referrer" target="_blank" href="https://www.jawharksa.com/article/">View Post</a></span>');
   assert.equal(panel.hidden, true, 'panel waits for all sites');
   emit(102, '<span>Created <a class="mainwp-may-hide-referrer" target="_blank" href="https://www.bawsalamashhad.com/article/">View Post</a></span>');
@@ -163,6 +171,18 @@ async function main() {
     }]);
   }
   const fullText = manyDoc.getElementById('mcs-caption').value;
+  manyDoc.getElementById('mcs-split-captions').click();
+  manyDoc.getElementById('mcs-split-count').value = '3';
+  manyDoc.getElementById('mcs-split-count').dispatchEvent(new many.window.Event('change'));
+  const parts3 = [...manyDoc.querySelectorAll('#mcs-caption-groups textarea')].map(x=>x.value);
+  assert.equal(parts3.length, 3, '3-group option active');
+  assert.equal(parts3.join('\n'), fullText, 'all 10 long URLs retained in 3 ordered groups');
+  manyDoc.getElementById('mcs-split-count').value = '4';
+  manyDoc.getElementById('mcs-split-count').dispatchEvent(new many.window.Event('change'));
+  const parts4 = [...manyDoc.querySelectorAll('#mcs-caption-groups textarea')].map(x=>x.value);
+  assert.equal(parts4.length, 4, '4-group option active');
+  assert.equal(parts4.join('\n'), fullText, 'all long URLs retained in 4 ordered groups');
+  manyDoc.getElementById('mcs-split-captions').click();
   assert.ok(fullText.length > 1024, 'long share text passes the image-caption guideline');
   assert.match(fullText, /news-210.example.com/, 'last site present without truncation');
   assert.equal(manyDoc.getElementById('mcs-next-caption'), null, 'no chunking button at large volume');
