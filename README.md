@@ -54,8 +54,8 @@ The original copy PNG / download PNG / copy full text workflow remains available
 2. Wait for short URLs to appear, check they resolve to **the right article** on every child site, and confirm the selected URL list is a single, one-click copy.
 3. Copy PNG and paste into WhatsApp Web/Desktop; send full text as a media caption when short enough, otherwise as one subsequent text message.
 4. Download PDF and DOCX, open both on Windows, click and copy several links (first, middle, last); verify the picture/title are correct.
-5. Test one failed child-site publish: it must not enter the share link list.
-6. Test a publication with no image: document export should remain disabled, normal publication unaffected.
+5. Test one truly missing child article: it must not enter the share link list, while an exact recent single match after 503 is eligible for recovery.
+6. Test a publication with no image: PDF and Word must still contain every selected link and normal publication must remain unaffected.
 
 The GitHub CI exercises 30 external links and validates real PDF clickable annotations and DOCX hyperlink relationships. **Live WhatsApp / MainWP deployment QA remains required before production approval**.
 
@@ -66,6 +66,16 @@ The GitHub CI exercises 30 external links and validates real PDF clickable annot
 - An image missing on the recovered child post does **not** suppress its verified published link. A recovered link is marked so the editor knows the featured image may still require repair.
 - Optional **remove `www.`** is initially unchecked and applied only when explicitly selected. The customer must verify that non-www domains resolve; this does not change WordPress canonical URLs or permanent redirects.
 - Optional **split WhatsApp caption** is initially unchecked. Selecting it reveals 2/3/4 groups with balanced, ordered per-group preview and independent copy buttons. The original full-caption copy action remains available; no URLs are truncated. Groups might still exceed WhatsApp's caption allowance if an individual URL is very long.
-- PDF and Word remain independent of WhatsApp text limits, export the complete selected link list, and do **not** split documents into WhatsApp groups. The selected `www.` display setting does affect exported links as a convenience; the original URLs are always retained in memory.
+- PDF and Word remain independent of WhatsApp text limits, export the complete selected link list, and do **not** split documents into WhatsApp groups. The optional `www.` setting affects only the WhatsApp copy/preview; PDF/Word retain canonical published URLs for safety.
 - Uses an admin-only nonce-scoped 30-minute transient for the publication title/time; no persistent history and no child-site plugin edits.
 - Staging/QA only until integration tested on the actual MainWP version and site network.
+
+## v0.4.1-dev — deep audit hardening
+
+- Bind AJAX results to the current MainWP source post ID. Wrong posting sessions must not contaminate this share workspace.
+- Never guess a Child site ID in synchronous mode; preserve the actual MainWP View Post permalink until a real per-site ID is available.
+- Record the beginning of publication on the server via a nonce-checked AJAX call. If the editor spent over 30 minutes preparing the post, the source post can recreate an expired verification transient if it still exists; never reconstruct a title from untrusted client input.
+- Readback matches use an exact normalized title, a short recent publication window, a unique numeric Child ID, and an authenticated MainWP Child response. Ambiguous/unreachable/invalid responses do not generate links. **Title/time matching is a heuristic, not a cryptographic transaction receipt**; the UI prompts checking the recovered article content and image.
+- PDF and Word preserve every selected canonical URL when the image fails to load, with a link-only layout instead of disabling exports.
+- Additional checks cover 503/ambiguous outcomes, MainWP API readback mocks, unrelated publication AJAX events, synchronous unknown IDs, and 30 links with and without a valid featured image.
+- Keep the current live plugin unchanged until manual MainWP network testing is completed.
