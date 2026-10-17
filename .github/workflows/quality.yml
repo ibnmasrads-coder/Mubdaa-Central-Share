@@ -18,11 +18,15 @@ jobs:
           php -l mubdaa-central-share.php
           php -l tests/isolation-smoke.php
           php -l includes/class-shortlinks.php
+          php -l includes/class-recovery.php
+          php -l tests/recovery-smoke.php
           php -l tests/shortlinks-smoke.php
       - name: WordPress isolation smoke
         run: php tests/isolation-smoke.php
       - name: Verified child shortlink integration
         run: php tests/shortlinks-smoke.php
+      - name: Verified false-failure readback regression
+        run: php tests/recovery-smoke.php
       - name: Real image endpoint and mixed-case nonce regression
         run: |
           php tests/image-endpoint-smoke.php > /tmp/mcs-endpoint-image.png
@@ -56,6 +60,7 @@ jobs:
           grep -q "Plugin Name: Mubdaa Central Share" mubdaa-central-share.php
           grep -q "mcs_featured_image" mubdaa-central-share.php
           grep -q "mainwp_bulkposting_done" includes/class-shortlinks.php
+          grep -q "mcs_recover_site" includes/class-recovery.php
           grep -q "mainwp_post_postingbulk" assets/share.js
           grep -q "navigator.clipboard.write" assets/share.js
           ! grep -q "sendMessage(" assets/share.js
@@ -64,7 +69,7 @@ jobs:
         run: |
           mkdir -p dist/mubdaa-central-share/assets dist/mubdaa-central-share/includes
           cp mubdaa-central-share.php dist/mubdaa-central-share/
-          cp includes/class-shortlinks.php dist/mubdaa-central-share/includes/
+          cp includes/class-shortlinks.php includes/class-recovery.php dist/mubdaa-central-share/includes/
           cp assets/share.js assets/share.css assets/documents.bundle.js dist/mubdaa-central-share/assets/
           (cd dist && zip -qr mubdaa-central-share-dev.zip mubdaa-central-share)
           unzip -l dist/mubdaa-central-share-dev.zip
