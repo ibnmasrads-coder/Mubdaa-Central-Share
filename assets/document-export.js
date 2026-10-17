@@ -15,18 +15,25 @@ function saveFile(blob, suffix) {
 
 export async function buildPdf({cardBlob, sites}) {
   const links = urlsOf(sites);
-  if (!cardBlob || !links.length) throw new Error('يجب تجهيز الصورة وتحديد المواقع قبل التصدير');
+  if (!links.length) throw new Error('يجب تحديد موقع واحد على الأقل قبل التصدير');
   const pdf = await PDFDocument.create();
   pdf.setTitle('Mubdaa - Published article');
   pdf.setSubject('Article image with live clickable links');
   const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const image = await pdf.embedPng(await bytes(cardBlob));
   const pw = 595.28, ph = 841.89, margin = 42, maxTextWidth = pw - margin * 2;
   let page = pdf.addPage([pw,ph]);
-  const scale = Math.min(maxTextWidth / image.width, 420 / image.height);
-  const w = image.width * scale, h = image.height * scale;
-  page.drawImage(image, { x:(pw-w)/2, y:ph-45-h, width:w, height:h });
-  let y = ph - 45 - h - 31;
+  let y = ph - 65;
+  if (cardBlob) {
+    const image = await pdf.embedPng(await bytes(cardBlob));
+    const scale = Math.min(maxTextWidth / image.width, 420 / image.height);
+    const w = image.width * scale, h = image.height * scale;
+    page.drawImage(image, { x:(pw-w)/2, y:ph-45-h, width:w, height:h });
+    y = ph - 45 - h - 31;
+  } else {
+    // A failed news image must never prevent downloading the complete link list.
+    page.drawText('Published article links', {x:margin, y:ph-55, size:15, font});
+    y = ph - 85;
+  }
   function newPage() { page = pdf.addPage([pw,ph]); y = ph - 56; }
   for (const url of links) {
     // Link remains selectable real text, no rasterized URL list.
@@ -71,8 +78,8 @@ function arabicParagraph(text) {
 
 export async function buildDocx({title, photoBlob, photoWidth, photoHeight, sites}) {
   const links = urlsOf(sites);
-  if (!photoBlob || !links.length) throw new Error('يجب تجهيز الصورة وتحديد المواقع قبل التصدير');
-  if (!photoWidth || !photoHeight) throw new Error('تعذر قراءة مقاسات الصورة');
+  if (!links.length) throw new Error('يجب تحديد موقع واحد على الأقل قبل التصدير');
+  if (photoBlob && (!photoWidth || !photoHeight)) throw new Error('تعذر قراءة مقاسات الصورة');
   const zip = new JSZip();
   zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
@@ -85,11 +92,15 @@ export async function buildDocx({title, photoBlob, photoWidth, photoHeight, site
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
     '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
     '</Relationships>');
-  const factor = Math.min(5257800/(photoWidth*9525), 3600000/(photoHeight*9525),1);
-  const cx = Math.round(photoWidth*9525*factor), cy = Math.round(photoHeight*9525*factor);
-  const content = [arabicParagraph(title), imageXml(cx,cy), arabicParagraph('روابط المقالات المنشورة')];
-  let relations = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/photo.png"/>';
+  const content = [arabicParagraph(title)];
+  let relations = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+  if (photoBlob) {
+    const factor = Math.min(5257800/(photoWidth*9525), 3600000/(photoHeight*9525),1);
+    const cx = Math.round(photoWidth*9525*factor), cy = Math.round(photoHeight*9525*factor);
+    content.push(imageXml(cx,cy));
+    relations += '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/photo.png"/>';
+  }
+  content.push(arabicParagraph('روابط المقالات المنشورة'));
   links.forEach((url,i) => {
     const id = 'rId' + (i+3);
     relations += '<Relationship Id="'+id+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="'+clean(url)+'" TargetMode="External"/>';
@@ -98,7 +109,7 @@ export async function buildDocx({title, photoBlob, photoWidth, photoHeight, site
       '<w:t xml:space="preserve">'+clean(url)+'</w:t></w:r></w:hyperlink></w:p>');
   });
   zip.file('word/_rels/document.xml.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+relations+'</Relationships>');
-  zip.file('word/media/photo.png',await bytes(photoBlob));
+  if (photoBlob) zip.file('word/media/photo.png',await bytes(photoBlob));
   zip.file('word/document.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +

@@ -112,3 +112,16 @@
   #mcs-share-panel .mcs-content { padding: 12px; }
   #mcs-share-panel .mcs-footer { padding: 10px 12px; }
 }
+
+/* Optional share controls and verified readback: scoped to the share panel. */
+#mcs-share-panel .mcs-recovery { display:flex; align-items:center; gap:9px; flex-wrap:wrap; font-size:12px; color:#765622; }
+#mcs-share-panel .mcs-recovery:empty { display:none; }
+#mcs-share-panel .mcs-sharing-options { display:grid; gap:8px; padding:12px; background:#f3f7fa; border:1px solid #dce6ee; border-radius:9px; font-size:13px; }
+#mcs-share-panel .mcs-sharing-options > label { display:flex; align-items:center; gap:8px; cursor:pointer; }
+#mcs-share-panel .mcs-sharing-options input[type="checkbox"] { width:17px; height:17px; flex:none; }
+#mcs-share-panel #mcs-split-settings { display:flex; flex-wrap:wrap; gap:9px; align-items:center; }
+#mcs-share-panel #mcs-split-settings small { flex-basis:100%; color:#5a6f7a; }
+#mcs-share-panel #mcs-split-count { min-width:130px; padding:5px; }
+#mcs-share-panel #mcs-caption-groups { display:grid; gap:10px; }
+#mcs-share-panel .mcs-group { display:grid; gap:6px; border:1px solid #d9e3eb; padding:9px; border-radius:8px; background:#fff; }
+#mcs-share-panel .mcs-group textarea { width:100%; min-height:55px; direction:ltr; font-size:12px; resize:vertical; border:1px solid #d4e0e9; border-radius:6px; padding:8px; }

@@ -5,7 +5,12 @@
 
   const state = {
     sites: new Map(),
+    failed: new Map(),
     completed: new Set(),
+    recoveryStarted: false,
+    recovering: false,
+    beginRequestStarted: false,
+    beginRequest: null,
     expected: 0,
     opened: false,
     dismissed: false,
@@ -27,7 +32,7 @@
   function safeUrl(input) {
     try {
       const url = new URL(input, window.location.href);
-      return ['https:', 'http:'].includes(url.protocol) ? url.href : '';
+      return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : '';
     } catch (e) { return ''; }
   }
 
@@ -58,6 +63,7 @@
     if (!id) return;
     state.completed.add(String(id));
     if (link) {
+      state.failed.delete(String(id));
       const old = state.sites.get(String(id));
       state.sites.set(String(id), {
         id: String(id),
@@ -66,6 +72,9 @@
         shareUrl: old?.shareUrl || '',
         selected: old ? old.selected : true
       });
+    } else if (!state.sites.has(String(id))) {
+      // A failed acknowledgement is not proof that the remote post was not created.
+      state.failed.set(String(id), { id: String(id), name: name || siteName(id) });
     }
     discoverExpected();
     if (state.expected > 0 && state.completed.size >= state.expected) {
@@ -78,13 +87,34 @@
     try {
       const p = new URLSearchParams(raw);
       if (p.get('action') !== 'mainwp_post_postingbulk') return null;
+      if (String(p.get('post_id')) !== String(mcsShare.postId)) return null;
+      const id = p.get('site_id');
+      if (!id || !/^\d+$/.test(id) || Number(id) < 1) return null;
+      const total = Number(p.get('total') || 0);
       return {
-        siteId: p.get('site_id'),
+        siteId: id,
         postId: p.get('post_id'),
-        total: Number(p.get('total') || 0)
+        total: Number.isFinite(total) ? Math.min(500, Math.max(0, total)) : 0
       };
     } catch (e) { return null; }
   }
+
+  // Stamp the beginning of the real publish (not page load), even if the editor
+  // spent a long time preparing the article on the posting screen.
+  $(document).ajaxSend(function (_event, _xhr, settings) {
+    const args = parseAjaxData(settings.data);
+    if (!args || state.beginRequestStarted || !mcsShare.recoveryEndpoint) return;
+    state.beginRequestStarted = true;
+    const params = new URLSearchParams();
+    params.set('action', 'mcs_recovery_begin');
+    params.set('post_id', String(mcsShare.postId));
+    params.set('nonce', mcsShare.recoveryNonce);
+    state.beginRequest = fetch(mcsShare.recoveryEndpoint, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: params.toString()
+    }).then(response => response.ok).catch(() => false);
+  });
 
   // The MainWP AJAX response contains the same "View Post" URL shown in its modal.
   $(document).ajaxSuccess(function (_event, xhr, settings, data) {
@@ -122,7 +152,9 @@
       if (!name) name = new URL(target).hostname;
       const nativeSiteLink = parent?.querySelector('a[href*="dashboard="]')?.getAttribute('href') || '';
       const actualSiteId = nativeSiteLink ? new URL(nativeSiteLink, window.location.href).searchParams.get('dashboard') : null;
-      const id = String(actualSiteId || (index + 1));
+      // An invented site ID could accidentally map to a different Child site's
+      // transient and replace a correct URL. Never guess IDs in synchronous mode.
+      const id = actualSiteId && /^\d+$/.test(actualSiteId) ? String(actualSiteId) : 'sync-' + index;
       state.sites.set(id, { id, name, url: target, shareUrl: '', selected: true });
     });
     state.expected = entries.length;
@@ -143,9 +175,14 @@
       panel.hidden = false;
       el('mcs-title').value = mcsShare.title || '';
     }
-    el('mcs-status').textContent = 'اكتمل النشر — ' + state.sites.size + ' موقع ناجح من ' + state.expected;
+    el('mcs-status').textContent = 'تم جمع ' + state.sites.size + ' روابط مؤكدة من ' + state.expected + ' مواقع';
     renderSites();
     fetchConfirmedShortlinks();
+    if (state.failed.size && !state.recoveryStarted) {
+      state.recoveryStarted = true;
+      el('mcs-recovery-status').textContent = 'هناك مواقع لم تؤكد MainWP نتيجتها؛ جاري التحقق من المقالات المنشورة دون إعادة نشر.';
+      window.setTimeout(recoverFailed, 1500);
+    }
     if (state.imageError) showImageError();
     else if (state.image) scheduleCard();
     else el('mcs-image-state').textContent = 'جاري تحميل الصورة الأصلية…';
@@ -188,6 +225,11 @@
       const name = document.createElement('span');
       name.className = 'mcs-site-name';
       name.textContent = s.name;
+      if (s.recovered) {
+        const recovered = document.createElement('small');
+        recovered.textContent = 'مطابقة العنوان ووقت النشر بعد خطأ الاتصال — راجع المقال وصورته';
+        name.appendChild(recovered);
+      }
       const domain = document.createElement('small');
       domain.textContent = new URL(s.url).hostname;
       name.appendChild(domain);
@@ -219,29 +261,136 @@
 
   function selectedSites() { return [...state.sites.values()].filter(s => s.selected); }
 
+  function selectedLink(s) {
+    const original = s.shareUrl || s.url;
+    if (!el('mcs-omit-www')?.checked) return original;
+    try {
+      const url = new URL(original);
+      if (url.hostname.toLowerCase().startsWith('www.')) {
+        url.hostname = url.hostname.slice(4);
+      }
+      return url.href;
+    } catch (err) { return original; }
+  }
+
+  function selectedLinks() { return selectedSites().map(selectedLink); }
+
   function recalcCaption() {
-    const selected = selectedSites();
-    el('mcs-selected-count').textContent = selected.length + ' محدد';
-    // No arbitrary length cut, no splitting, one clipboard operation for every link.
-    state.captionText = selected.length ?
-      selected.map(s => s.shareUrl || s.url).join('\n') : '';
+    const links = selectedLinks();
+    el('mcs-selected-count').textContent = links.length + ' محدد';
+    // Always retain the full list, regardless of optional grouping or character count.
+    state.captionText = links.join('\n');
     el('mcs-caption').value = state.captionText;
     el('mcs-copy-caption').disabled = !state.captionText;
-    if (el('mcs-download-pdf')) el('mcs-download-pdf').disabled = !state.cardReady || !selected.length;
-    if (el('mcs-download-docx')) el('mcs-download-docx').disabled = !state.cardReady || !selected.length;
+    if (el('mcs-download-pdf')) el('mcs-download-pdf').disabled = !links.length;
+    if (el('mcs-download-docx')) el('mcs-download-docx').disabled = !links.length;
+
     const length = state.captionText.length;
+    const grouping = !!el('mcs-split-captions')?.checked;
+    const settings = el('mcs-split-settings');
+    const area = el('mcs-caption-groups');
+    settings.hidden = !grouping;
+    area.hidden = !grouping || !links.length;
+    area.textContent = '';
+
+    if (grouping && links.length) {
+      const count = Math.min(links.length, Number(el('mcs-split-count').value) || 2);
+      const groups = Array.from({ length: count }, () => []);
+      links.forEach((link, index) => {
+        groups[Math.min(count - 1, Math.floor(index * count / links.length))].push(link);
+      });
+      groups.forEach((group, index) => {
+        const value = group.join('\n');
+        const row = document.createElement('div');
+        row.className = 'mcs-group';
+        const header = document.createElement('div');
+        header.className = 'mcs-caption-head';
+        const title = document.createElement('strong');
+        title.textContent = 'المجموعة ' + (index + 1) + ' من ' + count + ' — ' + value.length + ' حرف';
+        if (value.length > mcsShare.captionGuide) title.textContent += ' (قد تتجاوز حد الكابشن)';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'نسخ المجموعة ' + (index + 1);
+        button.addEventListener('click', async () => {
+          if (await copyText(value)) toast('تم نسخ المجموعة ' + (index + 1) + ' كاملة.');
+        });
+        header.append(title, button);
+        const preview = document.createElement('textarea');
+        preview.readOnly = true;
+        preview.rows = Math.min(5, group.length + 1);
+        preview.dir = 'ltr';
+        preview.value = value;
+        row.append(header, preview);
+        area.appendChild(row);
+      });
+    }
+
     if (!length) {
       el('mcs-caption-progress').textContent = 'لم يتم تحديد مواقع';
     } else if (length > mcsShare.captionGuide) {
-      el('mcs-caption-progress').textContent = length + ' حرف — قد يتجاوز حد وصف الصورة؛ الصقه كرسالة نصية واحدة بعد الصورة';
+      el('mcs-caption-progress').textContent = length + ' حرف — النص الكامل محفوظ؛ استخدم تقسيم المجموعات اختياريًا';
     } else {
       el('mcs-caption-progress').textContent = length + ' حرف — انسخ النص كاملًا';
     }
   }
 
+  async function recoverFailed() {
+    if (state.recovering || !state.failed.size || !mcsShare.recoveryEndpoint) return;
+    state.recovering = true;
+    if (state.beginRequest) await state.beginRequest;
+    const retry = el('mcs-retry-recovery');
+    retry.hidden = true;
+    const pending = [...state.failed.values()];
+    let restored = 0;
+    for (const site of pending) {
+      // Read-only, sequential calls avoid amplifying the server pressure that caused 503.
+      if (state.sites.has(site.id)) { state.failed.delete(site.id); continue; }
+      const data = new URLSearchParams();
+      data.set('action', 'mcs_recover_site');
+      data.set('post_id', String(mcsShare.postId));
+      data.set('site_id', site.id);
+      data.set('nonce', mcsShare.recoveryNonce);
+      el('mcs-recovery-status').textContent = 'التحقق من ' + site.name + ' — ' + (restored + 1) + ' روابط مسترجعة';
+      try {
+        const response = await fetch(mcsShare.recoveryEndpoint, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+          body: data.toString()
+        });
+        const result = response.ok ? await response.json() : null;
+        const candidate = result?.success ? result.data : null;
+        if (candidate?.status === 'confirmed' && typeof candidate.url === 'string') {
+          const link = safeUrl(candidate.url);
+          if (link) {
+            // Keep previously selected successful sites in their original order; recovered
+            // sites are never inserted as duplicates or mixed with unrelated publishes.
+            state.sites.set(site.id, {
+              id: site.id, name: site.name,
+              url: link, shareUrl: link, selected: true, recovered: true
+            });
+            state.failed.delete(site.id);
+            restored++;
+            renderSites();
+          }
+        }
+      } catch (error) {
+        console.warn('[Mubdaa Central Share] Child readback unavailable', site.id);
+      }
+    }
+    state.recovering = false;
+    const missing = state.failed.size;
+    const unknownNames = [...state.failed.values()].map(site => site.name).join('، ');
+    el('mcs-recovery-status').textContent = restored + ' روابط تم استرجاعها بعد خطأ الاتصال؛ ' +
+      (missing ? missing + ' مواقع غير مؤكدة: ' + unknownNames + ' — راجعها قبل إعادة النشر.' :
+        'كل المواقع التي وصلنا لنتيجتها لها روابط مؤكدة أو مسترجعة.');
+    retry.hidden = !missing;
+    el('mcs-status').textContent = 'روابط مؤكدة: ' + state.sites.size + ' من ' + state.expected;
+  }
+
   async function fetchConfirmedShortlinks() {
     if (state.shortlinksRequest || !state.sites.size || !mcsShare.shortlinksEndpoint) return;
-    const ids = [...state.sites.keys()];
+    const ids = [...state.sites.keys()].filter(id => /^\d+$/.test(id));
+    if (!ids.length) return;
     const params = new URLSearchParams();
     params.set('action', 'mcs_shortlinks');
     params.set('post_id', String(mcsShare.postId));
@@ -346,8 +495,8 @@
     try {
       state.cardBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
       state.cardReady = !!state.cardBlob;
-      el('mcs-download-pdf').disabled = !state.cardReady || !selectedSites().length;
-      el('mcs-download-docx').disabled = !state.cardReady || !selectedSites().length;
+      el('mcs-download-pdf').disabled = !selectedSites().length;
+      el('mcs-download-docx').disabled = !selectedSites().length;
       el('mcs-copy-image').disabled = !state.cardReady;
       el('mcs-download-image').disabled = !state.cardReady;
       el('mcs-image-state').textContent = state.cardReady ? 'الصورة الحقيقية جاهزة للنسخ أو التحميل.' : 'فشل حفظ بطاقة الصورة.';
@@ -412,6 +561,10 @@
       renderSites();
     });
     el('mcs-title').addEventListener('input', scheduleCard);
+    el('mcs-omit-www').addEventListener('change', recalcCaption);
+    el('mcs-split-captions').addEventListener('change', recalcCaption);
+    el('mcs-split-count').addEventListener('change', recalcCaption);
+    el('mcs-retry-recovery').addEventListener('click', recoverFailed);
     el('mcs-retry-image').addEventListener('click', () => {
       el('mcs-retry-image').hidden = true;
       el('mcs-image-state').textContent = 'جاري إعادة تحميل الصورة…';
@@ -431,32 +584,39 @@
 
   async function exportFile(kind) {
     const button = el(kind === 'pdf' ? 'mcs-download-pdf' : 'mcs-download-docx');
-    if (!state.cardReady || !state.image || !window.MCSExport) {
-      toast('ملف الصورة أو مكتبة التصدير غير جاهزة.'); return;
+    if (!selectedSites().length || !window.MCSExport) {
+      toast('حدد موقعًا واحدًا على الأقل وتأكد من تحميل مكتبة التصدير.'); return;
     }
     button.disabled = true;
     try {
       // Preserve the unmodified photo in Word; PDF uses the titled ready-made image card.
       const src = state.image;
-      const scale = Math.min(1, 1600 / Math.max(src.naturalWidth, src.naturalHeight));
-      const w = Math.max(1,Math.round(src.naturalWidth*scale));
-      const h = Math.max(1,Math.round(src.naturalHeight*scale));
-      const cv = document.createElement('canvas');
-      cv.width = w; cv.height = h;
-      cv.getContext('2d').drawImage(src,0,0,w,h);
-      const photoBlob = await new Promise(resolve=>cv.toBlob(resolve,'image/png'));
-      if (!photoBlob) throw new Error('فشل إنشاء نسخة الصورة الأصلية للملف');
+      let w = 0, h = 0, photoBlob = null;
+      if (src && src.naturalWidth > 0 && src.naturalHeight > 0) {
+        const scale = Math.min(1, 1600 / Math.max(src.naturalWidth, src.naturalHeight));
+        w = Math.max(1, Math.round(src.naturalWidth * scale));
+        h = Math.max(1, Math.round(src.naturalHeight * scale));
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const context = cv.getContext('2d');
+        if (context) {
+          context.drawImage(src, 0, 0, w, h);
+          photoBlob = await new Promise(resolve => cv.toBlob(resolve, 'image/png'));
+        }
+      }
       const data = {
         title:el('mcs-title').value.trim() || mcsShare.title,
         cardBlob:state.cardBlob,
         photoBlob,
         photoWidth:w,
         photoHeight:h,
+        // Documents use the verified original URLs, not optional WhatsApp formatting.
         sites:selectedSites().map(s=>({url:s.shareUrl || s.url}))
       };
       if (!data.sites.length) throw new Error('اختر موقعًا واحدًا على الأقل');
       await window.MCSExport[kind](data);
-      toast('تم تجهيز ' + (kind === 'pdf' ? 'PDF' : 'Word') + ' للتنزيل. أرفقه في واتساب من خيار المستندات.');
+      toast('تم تجهيز ' + (kind === 'pdf' ? 'PDF' : 'Word') +
+        (state.cardReady && photoBlob ? ' بالصورة والروابط' : ' بالروابط كاملة بدون صورة') + '؛ أرفقه كمستند في واتساب.');
     } catch (err) {
       toast('تعذر إنشاء الملف: ' + (err?.message || String(err)));
       console.error('[Mubdaa Central Share] Document export failed',err);
