@@ -151,7 +151,9 @@
       if (!name) name = new URL(target).hostname;
       const nativeSiteLink = parent?.querySelector('a[href*="dashboard="]')?.getAttribute('href') || '';
       const actualSiteId = nativeSiteLink ? new URL(nativeSiteLink, window.location.href).searchParams.get('dashboard') : null;
-      const id = String(actualSiteId || (index + 1));
+      // An invented site ID could accidentally map to a different Child site's
+      // transient and replace a correct URL. Never guess IDs in synchronous mode.
+      const id = actualSiteId && /^\d+$/.test(actualSiteId) ? String(actualSiteId) : 'sync-' + index;
       state.sites.set(id, { id, name, url: target, shareUrl: '', selected: true });
     });
     state.expected = entries.length;
@@ -224,7 +226,7 @@
       name.textContent = s.name;
       if (s.recovered) {
         const recovered = document.createElement('small');
-        recovered.textContent = 'تأكد وجود المقال بعد خطأ الاتصال — تحقق من صورته البارزة';
+        recovered.textContent = 'مطابقة العنوان ووقت النشر بعد خطأ الاتصال — راجع المقال وصورته';
         name.appendChild(recovered);
       }
       const domain = document.createElement('small');
@@ -384,7 +386,8 @@
 
   async function fetchConfirmedShortlinks() {
     if (state.shortlinksRequest || !state.sites.size || !mcsShare.shortlinksEndpoint) return;
-    const ids = [...state.sites.keys()];
+    const ids = [...state.sites.keys()].filter(id => /^\d+$/.test(id));
+    if (!ids.length) return;
     const params = new URLSearchParams();
     params.set('action', 'mcs_shortlinks');
     params.set('post_id', String(mcsShare.postId));
