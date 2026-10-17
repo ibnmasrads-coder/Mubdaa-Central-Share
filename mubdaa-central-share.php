@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Mubdaa Central Share
  * Description: Desktop-only MainWP publish-result sharing with a real, copyable featured-image card and selected article links.
- * Version: 0.3.0-dev
+ * Version: 0.4.0-dev
  * Requires at least: 6.3
  * Requires PHP: 8.0
  * Author: Mubdaa
@@ -13,7 +13,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Mubdaa_Central_Share {
-	const VERSION = '0.3.0-dev';
+	const VERSION = '0.4.0-dev';
 	const MAX_IMAGE_BYTES = 12582912; // 12 MiB.
 	const MAX_IMAGE_PIXELS = 24000000;
 	const TTL = 1800; // Ephemeral source metadata only; no publication/share history.
@@ -72,6 +72,7 @@ final class Mubdaa_Central_Share {
 		// MainWP may delete the temporary dashboard post on the final AJAX result.
 		// Capture the source title and attachment reference before its page callback runs.
 		$image = self::find_image( $post_id );
+		MCS_Post_Recovery::remember_source( $post_id, html_entity_decode( get_the_title( $post_id ), ENT_QUOTES, 'UTF-8' ) );
 		$key = wp_generate_password( 32, false, false );
 		set_transient(
 			'mcs_source_' . $key,
@@ -122,6 +123,8 @@ final class Mubdaa_Central_Share {
 				'postId'         => $post_id,
 				'shortlinksEndpoint' => admin_url( 'admin-ajax.php' ),
 				'shortlinksNonce' => wp_create_nonce( 'mcs_shortlinks_' . $post_id ),
+			'recoveryEndpoint' => admin_url( 'admin-ajax.php' ),
+			'recoveryNonce' => wp_create_nonce( 'mcs_recovery_' . $post_id ),
 				'captionGuide'   => 1024, // Image-caption size guidance. No truncation or splitting.
 				'strings' => array(
 					'noImage'       => 'لا توجد صورة بارزة يمكن الوصول إليها لهذا المقال. لن نجهز مشاركة بدون صورة.',
@@ -147,7 +150,8 @@ final class Mubdaa_Central_Share {
 					<div id="mcs-warning" class="mcs-warning" hidden></div>
 					<label class="mcs-label" for="mcs-title">عنوان المقال على بطاقة الصورة</label>
 					<textarea id="mcs-title" class="mcs-title-input" rows="2" maxlength="400"></textarea>
-					<div class="mcs-sites-header"><strong>المواقع المنشورة بنجاح</strong><span id="mcs-selected-count"></span></div>
+					<div class="mcs-sites-header"><strong>روابط النشر المؤكدة</strong><span id="mcs-selected-count"></span></div>
+					<div class="mcs-recovery" role="status" aria-live="polite"><span id="mcs-recovery-status"></span><button type="button" id="mcs-retry-recovery" hidden>إعادة التحقق من المواقع غير المؤكدة</button></div>
 					<div class="mcs-select-actions">
 						<button id="mcs-select-all" type="button">تحديد الكل</button>
 						<button id="mcs-select-none" type="button">إلغاء التحديد</button>
@@ -158,6 +162,15 @@ final class Mubdaa_Central_Share {
 						<canvas id="mcs-canvas" role="img" aria-label="بطاقة الصورة البارزة مع عنوان الخبر"></canvas>
 						<div id="mcs-image-state" class="mcs-hint" aria-live="polite">جاري تجهيز البطاقة…</div>
 						<button type="button" id="mcs-retry-image" hidden>إعادة محاولة تحميل الصورة</button>
+					</div>
+					<div class="mcs-sharing-options">
+						<label><input id="mcs-omit-www" type="checkbox"> حذف www. من الروابط (اختياري — تأكد أن الدومينات تعمل بدونها)</label>
+						<label><input id="mcs-split-captions" type="checkbox"> تقسيم نص واتساب إلى مجموعات (اختياري)</label>
+						<div id="mcs-split-settings" hidden><label for="mcs-split-count">عدد المجموعات</label>
+							<select id="mcs-split-count"><option value="2">مجموعتان</option><option value="3">3 مجموعات</option><option value="4">4 مجموعات</option></select>
+							<small>كل مجموعة تُنسخ وتُرسل على حدة. لا يؤثر التقسيم على PDF أو Word.</small>
+						</div>
+						<div id="mcs-caption-groups" hidden></div>
 					</div>
 					<div class="mcs-caption-wrap">
 						<div class="mcs-caption-head">
@@ -272,4 +285,5 @@ final class Mubdaa_Central_Share {
 }
 
 require_once __DIR__ . '/includes/class-shortlinks.php';
+require_once __DIR__ . '/includes/class-recovery.php';
 Mubdaa_Central_Share::boot();
