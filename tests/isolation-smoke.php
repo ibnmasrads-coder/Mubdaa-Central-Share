@@ -28,6 +28,7 @@ function plugins_url( $path, $file ) { return 'https://main.example.com/wp-conte
 function wp_enqueue_script( $handle, $url, $deps, $version, $footer ) { global $recorded; $recorded['scripts'][] = $handle; }
 function wp_localize_script( $handle, $name, $value ) { global $recorded; $recorded['localize'] = $value; }
 function get_the_title( $id ) { return 'خبر جديد'; }
+function wp_strip_all_tags( $text ) { return strip_tags( $text ); }
 function admin_url( $path ) { return 'https://main.example.com/wp-admin/' . $path; }
 function add_query_arg( $query, $url ) { return $url . '?' . http_build_query( $query ); }
 function wp_create_nonce( $action ) { return 'demo'; }
@@ -52,7 +53,8 @@ assert_true( in_array( 'mcs-share', $recorded['scripts'], true ), 'JS registered
 assert_true( in_array( 'mcs-share', $recorded['styles'], true ), 'CSS registered on MainWP post screen' );
 assert_true( true === $recorded['localize']['hasImage'], 'Featured image found' );
 assert_true( 'خبر جديد' === $recorded['localize']['title'], 'Source title captured' );
-assert_true( count( $recorded['transients'] ) === 1, 'Only one ephemeral image reference created' );
+assert_true( count( $recorded['transients'] ) === 2, 'Temporary image reference and readback session only' );
+assert_true( isset( $recorded['transients']['mcs_recovery_9_123'] ), 'Readback session scoped by user and batch' );
 assert_true( ! array_key_exists( 'links', reset( $recorded['transients'] ) ), 'No results saved in transient' );
 
 ob_start();
