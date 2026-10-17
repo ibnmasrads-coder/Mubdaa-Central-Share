@@ -138,9 +138,19 @@ final class MCS_Post_Recovery {
 		} catch ( \Throwable $e ) {
 			wp_send_json_success( array( 'status' => 'unreachable' ) );
 		}
-		// A malformed MainWP response is not equivalent to zero published posts.
-		if ( ! is_array( $posts ) || isset( $posts['error'] ) || isset( $posts['fetch_url_output'] ) ) {
+		// MainWP_Connect::fetch_url_authed() appends fetch_url_output to ALL
+		// successful list responses (HTTP status / diagnostic metadata). Exclude
+		// this trusted envelope before validating the actual numeric post list.
+		if ( ! is_array( $posts ) || isset( $posts['error'] ) ) {
 			wp_send_json_success( array( 'status' => 'unreachable' ) );
+		}
+		if ( array_key_exists( 'fetch_url_output', $posts ) ) {
+			$output = $posts['fetch_url_output'];
+			if ( ! is_array( $output ) || ( isset( $output['http_status'] ) &&
+				( (int) $output['http_status'] < 200 || (int) $output['http_status'] >= 300 ) ) ) {
+				wp_send_json_success( array( 'status' => 'unreachable' ) );
+			}
+			unset( $posts['fetch_url_output'] );
 		}
 		$match = self::unique_match( $posts, $source['title'], $source['started'], time() );
 		if ( 'confirmed' !== $match['status'] ) {
