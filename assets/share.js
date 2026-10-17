@@ -5,7 +5,10 @@
 
   const state = {
     sites: new Map(),
+    failed: new Map(),
     completed: new Set(),
+    recoveryStarted: false,
+    recovering: false,
     expected: 0,
     opened: false,
     dismissed: false,
@@ -58,6 +61,7 @@
     if (!id) return;
     state.completed.add(String(id));
     if (link) {
+      state.failed.delete(String(id));
       const old = state.sites.get(String(id));
       state.sites.set(String(id), {
         id: String(id),
@@ -66,6 +70,9 @@
         shareUrl: old?.shareUrl || '',
         selected: old ? old.selected : true
       });
+    } else if (!state.sites.has(String(id))) {
+      // A failed acknowledgement is not proof that the remote post was not created.
+      state.failed.set(String(id), { id: String(id), name: name || siteName(id) });
     }
     discoverExpected();
     if (state.expected > 0 && state.completed.size >= state.expected) {
@@ -143,9 +150,14 @@
       panel.hidden = false;
       el('mcs-title').value = mcsShare.title || '';
     }
-    el('mcs-status').textContent = 'اكتمل النشر — ' + state.sites.size + ' موقع ناجح من ' + state.expected;
+    el('mcs-status').textContent = 'تم جمع ' + state.sites.size + ' روابط مؤكدة من ' + state.expected + ' مواقع';
     renderSites();
     fetchConfirmedShortlinks();
+    if (state.failed.size && !state.recoveryStarted) {
+      state.recoveryStarted = true;
+      el('mcs-recovery-status').textContent = 'هناك مواقع لم تؤكد MainWP نتيجتها؛ جاري التحقق من المقالات المنشورة دون إعادة نشر.';
+      window.setTimeout(recoverFailed, 1500);
+    }
     if (state.imageError) showImageError();
     else if (state.image) scheduleCard();
     else el('mcs-image-state').textContent = 'جاري تحميل الصورة الأصلية…';
@@ -188,6 +200,11 @@
       const name = document.createElement('span');
       name.className = 'mcs-site-name';
       name.textContent = s.name;
+      if (s.recovered) {
+        const recovered = document.createElement('small');
+        recovered.textContent = 'تأكد وجود المقال بعد خطأ الاتصال — تحقق من صورته البارزة';
+        name.appendChild(recovered);
+      }
       const domain = document.createElement('small');
       domain.textContent = new URL(s.url).hostname;
       name.appendChild(domain);
@@ -219,24 +236,125 @@
 
   function selectedSites() { return [...state.sites.values()].filter(s => s.selected); }
 
+  function selectedLink(s) {
+    const original = s.shareUrl || s.url;
+    if (!el('mcs-omit-www')?.checked) return original;
+    try {
+      const url = new URL(original);
+      if (url.hostname.toLowerCase().startsWith('www.')) {
+        url.hostname = url.hostname.slice(4);
+      }
+      return url.href;
+    } catch (err) { return original; }
+  }
+
+  function selectedLinks() { return selectedSites().map(selectedLink); }
+
   function recalcCaption() {
-    const selected = selectedSites();
-    el('mcs-selected-count').textContent = selected.length + ' محدد';
-    // No arbitrary length cut, no splitting, one clipboard operation for every link.
-    state.captionText = selected.length ?
-      selected.map(s => s.shareUrl || s.url).join('\n') : '';
+    const links = selectedLinks();
+    el('mcs-selected-count').textContent = links.length + ' محدد';
+    // Always retain the full list, regardless of optional grouping or character count.
+    state.captionText = links.join('\\n');
     el('mcs-caption').value = state.captionText;
     el('mcs-copy-caption').disabled = !state.captionText;
-    if (el('mcs-download-pdf')) el('mcs-download-pdf').disabled = !state.cardReady || !selected.length;
-    if (el('mcs-download-docx')) el('mcs-download-docx').disabled = !state.cardReady || !selected.length;
+    if (el('mcs-download-pdf')) el('mcs-download-pdf').disabled = !state.cardReady || !links.length;
+    if (el('mcs-download-docx')) el('mcs-download-docx').disabled = !state.cardReady || !links.length;
+
     const length = state.captionText.length;
+    const grouping = !!el('mcs-split-captions')?.checked;
+    const settings = el('mcs-split-settings');
+    const area = el('mcs-caption-groups');
+    settings.hidden = !grouping;
+    area.hidden = !grouping || !links.length;
+    area.textContent = '';
+
+    if (grouping && links.length) {
+      const count = Math.min(links.length, Number(el('mcs-split-count').value) || 2);
+      const groups = Array.from({ length: count }, () => []);
+      links.forEach((link, index) => {
+        groups[Math.min(count - 1, Math.floor(index * count / links.length))].push(link);
+      });
+      groups.forEach((group, index) => {
+        const value = group.join('\\n');
+        const row = document.createElement('div');
+        row.className = 'mcs-group';
+        const header = document.createElement('div');
+        header.className = 'mcs-caption-head';
+        const title = document.createElement('strong');
+        title.textContent = 'المجموعة ' + (index + 1) + ' من ' + count + ' — ' + value.length + ' حرف';
+        if (value.length > mcsShare.captionGuide) title.textContent += ' (قد تتجاوز حد الكابشن)';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'نسخ المجموعة ' + (index + 1);
+        button.addEventListener('click', async () => {
+          if (await copyText(value)) toast('تم نسخ المجموعة ' + (index + 1) + ' كاملة.');
+        });
+        header.append(title, button);
+        const preview = document.createElement('textarea');
+        preview.readOnly = true;
+        preview.rows = Math.min(5, group.length + 1);
+        preview.dir = 'ltr';
+        preview.value = value;
+        row.append(header, preview);
+        area.appendChild(row);
+      });
+    }
+
     if (!length) {
       el('mcs-caption-progress').textContent = 'لم يتم تحديد مواقع';
     } else if (length > mcsShare.captionGuide) {
-      el('mcs-caption-progress').textContent = length + ' حرف — قد يتجاوز حد وصف الصورة؛ الصقه كرسالة نصية واحدة بعد الصورة';
+      el('mcs-caption-progress').textContent = length + ' حرف — النص الكامل محفوظ؛ استخدم تقسيم المجموعات اختياريًا';
     } else {
       el('mcs-caption-progress').textContent = length + ' حرف — انسخ النص كاملًا';
     }
+  }
+
+  async function recoverFailed() {
+    if (state.recovering || !state.failed.size || !mcsShare.recoveryEndpoint) return;
+    state.recovering = true;
+    const retry = el('mcs-retry-recovery');
+    retry.hidden = true;
+    const pending = [...state.failed.values()];
+    let restored = 0;
+    for (const site of pending) {
+      // Read-only, sequential calls avoid amplifying the server pressure that caused 503.
+      if (state.sites.has(site.id)) { state.failed.delete(site.id); continue; }
+      const data = new URLSearchParams();
+      data.set('action', 'mcs_recover_site');
+      data.set('post_id', String(mcsShare.postId));
+      data.set('site_id', site.id);
+      data.set('nonce', mcsShare.recoveryNonce);
+      el('mcs-recovery-status').textContent = 'التحقق من ' + site.name + ' — ' + (restored + 1) + ' روابط مسترجعة';
+      try {
+        const response = await fetch(mcsShare.recoveryEndpoint, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+          body: data.toString()
+        });
+        const result = response.ok ? await response.json() : null;
+        const candidate = result?.success ? result.data : null;
+        if (candidate?.status === 'confirmed' && typeof candidate.url === 'string') {
+          const link = safeUrl(candidate.url);
+          if (link) {
+            state.sites.set(site.id, {
+              id: site.id, name: site.name,
+              url: link, shareUrl: link, selected: true, recovered: true
+            });
+            state.failed.delete(site.id);
+            restored++;
+            renderSites();
+          }
+        }
+      } catch (error) {
+        console.warn('[Mubdaa Central Share] Child readback unavailable', site.id);
+      }
+    }
+    state.recovering = false;
+    const missing = state.failed.size;
+    el('mcs-recovery-status').textContent = restored + ' روابط تم استرجاعها بعد خطأ الاتصال؛ ' +
+      (missing ? missing + ' مواقع ما زالت غير مؤكدة. لا تعِد النشر قبل مراجعتها.' : 'جميع روابط المواقع أصبحت مؤكدة.');
+    retry.hidden = !missing;
+    el('mcs-status').textContent = 'روابط مؤكدة: ' + state.sites.size + ' من ' + state.expected;
   }
 
   async function fetchConfirmedShortlinks() {
@@ -412,6 +530,10 @@
       renderSites();
     });
     el('mcs-title').addEventListener('input', scheduleCard);
+    el('mcs-omit-www').addEventListener('change', recalcCaption);
+    el('mcs-split-captions').addEventListener('change', recalcCaption);
+    el('mcs-split-count').addEventListener('change', recalcCaption);
+    el('mcs-retry-recovery').addEventListener('click', recoverFailed);
     el('mcs-retry-image').addEventListener('click', () => {
       el('mcs-retry-image').hidden = true;
       el('mcs-image-state').textContent = 'جاري إعادة تحميل الصورة…';
@@ -452,7 +574,7 @@
         photoBlob,
         photoWidth:w,
         photoHeight:h,
-        sites:selectedSites().map(s=>({url:s.shareUrl || s.url}))
+        sites:selectedLinks().map(url=>({url}))
       };
       if (!data.sites.length) throw new Error('اختر موقعًا واحدًا على الأقل');
       await window.MCSExport[kind](data);
