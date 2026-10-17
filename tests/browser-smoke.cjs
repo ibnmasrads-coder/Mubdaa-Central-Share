@@ -129,6 +129,11 @@ async function main() {
   assert.equal(sync.window.document.getElementById('mcs-share-panel').hidden, false,
     'synchronous MainWP publishing renders panel immediately');
   assert.match(sync.window.document.getElementById('mcs-caption').value, /jawharksa.com/);
+  const originalSync = sync.window.document.getElementById('mcs-caption').value;
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(sync.window.document.getElementById('mcs-caption').value, originalSync,
+    'unknown site ID must keep the original permalink and never guess a Child ID');
+  assert.equal(sync.window.document.querySelectorAll('#mcs-sites .mcs-site').length, 1);
   sync.dom.window.close();
 
   // Regression: copying a long set of published links must never split at 900/1024 chars.
