@@ -60,7 +60,7 @@ final class MCS_Post_Recovery {
 
 	public static function unique_match( $posts, string $title, int $started, int $now ): array {
 		if ( ! is_array( $posts ) || count( $posts ) >= self::MAX_RESULTS ||
-			array_keys( $posts ) !== range( 0, count( $posts ) - 1 ) ) {
+			( ! empty( $posts ) && array_keys( $posts ) !== range( 0, count( $posts ) - 1 ) ) ) {
 			// Failure payloads / truncated result sets are not evidence of absence.
 			return array( 'status' => 'unknown' );
 		}
