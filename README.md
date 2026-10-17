@@ -58,3 +58,14 @@ The original copy PNG / download PNG / copy full text workflow remains available
 6. Test a publication with no image: document export should remain disabled, normal publication unaffected.
 
 The GitHub CI exercises 30 external links and validates real PDF clickable annotations and DOCX hyperlink relationships. **Live WhatsApp / MainWP deployment QA remains required before production approval**.
+
+## v0.4.0-dev — Ambiguous publish readback and optional caption controls
+
+- A child-site 503 or missing MainWP acknowledgement is **not** treated as proof that publication failed. Following the last bulk result, the sharing screen automatically queries each failed child **through MainWP's existing authenticated read-only `get_all_posts` call**, one site at a time. It never retries the publishing operation.
+- An apparently failed site is added only if exactly one published post has the **exact same title** and a publication timestamp close to this sharing session. The child-supplied ID is used for `?p=`. Missing, ambiguous, expired, or unreachable results are **excluded and visibly flagged** for a manual recheck. This is a cautious recovery heuristic, not a guaranteed cross-site transaction receipt: duplicate articles or posts older than the session window may need human verification.
+- An image missing on the recovered child post does **not** suppress its verified published link. A recovered link is marked so the editor knows the featured image may still require repair.
+- Optional **remove `www.`** is initially unchecked and applied only when explicitly selected. The customer must verify that non-www domains resolve; this does not change WordPress canonical URLs or permanent redirects.
+- Optional **split WhatsApp caption** is initially unchecked. Selecting it reveals 2/3/4 groups with balanced, ordered per-group preview and independent copy buttons. The original full-caption copy action remains available; no URLs are truncated. Groups might still exceed WhatsApp's caption allowance if an individual URL is very long.
+- PDF and Word remain independent of WhatsApp text limits, export the complete selected link list, and do **not** split documents into WhatsApp groups. The selected `www.` display setting does affect exported links as a convenience; the original URLs are always retained in memory.
+- Uses an admin-only nonce-scoped 30-minute transient for the publication title/time; no persistent history and no child-site plugin edits.
+- Staging/QA only until integration tested on the actual MainWP version and site network.
