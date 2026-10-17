@@ -89,7 +89,7 @@
       if (p.get('action') !== 'mainwp_post_postingbulk') return null;
       if (String(p.get('post_id')) !== String(mcsShare.postId)) return null;
       const id = p.get('site_id');
-      if (!id || !/^\\d+$/.test(id) || Number(id) < 1) return null;
+      if (!id || !/^\d+$/.test(id) || Number(id) < 1) return null;
       return {
         siteId: p.get('site_id'),
         postId: p.get('post_id'),
