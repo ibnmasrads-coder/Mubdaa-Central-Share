@@ -9,6 +9,8 @@
     completed: new Set(),
     recoveryStarted: false,
     recovering: false,
+    beginRequestStarted: false,
+    beginRequest: null,
     expected: 0,
     opened: false,
     dismissed: false,
@@ -30,7 +32,7 @@
   function safeUrl(input) {
     try {
       const url = new URL(input, window.location.href);
-      return ['https:', 'http:'].includes(url.protocol) ? url.href : '';
+      return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : '';
     } catch (e) { return ''; }
   }
 
@@ -85,13 +87,33 @@
     try {
       const p = new URLSearchParams(raw);
       if (p.get('action') !== 'mainwp_post_postingbulk') return null;
+      if (String(p.get('post_id')) !== String(mcsShare.postId)) return null;
+      const id = p.get('site_id');
+      if (!id || !/^\\d+$/.test(id) || Number(id) < 1) return null;
       return {
         siteId: p.get('site_id'),
         postId: p.get('post_id'),
-        total: Number(p.get('total') || 0)
+        total: Math.min(500, Math.max(0, Number(p.get('total') || 0)))
       };
     } catch (e) { return null; }
   }
+
+  // Stamp the beginning of the real publish (not page load), even if the editor
+  // spent a long time preparing the article on the posting screen.
+  $(document).ajaxSend(function (_event, _xhr, settings) {
+    const args = parseAjaxData(settings.data);
+    if (!args || state.beginRequestStarted || !mcsShare.recoveryEndpoint) return;
+    state.beginRequestStarted = true;
+    const params = new URLSearchParams();
+    params.set('action', 'mcs_recovery_begin');
+    params.set('post_id', String(mcsShare.postId));
+    params.set('nonce', mcsShare.recoveryNonce);
+    state.beginRequest = fetch(mcsShare.recoveryEndpoint, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: params.toString()
+    }).then(response => response.ok).catch(() => false);
+  });
 
   // The MainWP AJAX response contains the same "View Post" URL shown in its modal.
   $(document).ajaxSuccess(function (_event, xhr, settings, data) {
@@ -257,8 +279,8 @@
     state.captionText = links.join('\n');
     el('mcs-caption').value = state.captionText;
     el('mcs-copy-caption').disabled = !state.captionText;
-    if (el('mcs-download-pdf')) el('mcs-download-pdf').disabled = !state.cardReady || !links.length;
-    if (el('mcs-download-docx')) el('mcs-download-docx').disabled = !state.cardReady || !links.length;
+    if (el('mcs-download-pdf')) el('mcs-download-pdf').disabled = !links.length;
+    if (el('mcs-download-docx')) el('mcs-download-docx').disabled = !links.length;
 
     const length = state.captionText.length;
     const grouping = !!el('mcs-split-captions')?.checked;
@@ -312,6 +334,7 @@
   async function recoverFailed() {
     if (state.recovering || !state.failed.size || !mcsShare.recoveryEndpoint) return;
     state.recovering = true;
+    if (state.beginRequest) await state.beginRequest;
     const retry = el('mcs-retry-recovery');
     retry.hidden = true;
     const pending = [...state.failed.values()];
@@ -336,6 +359,8 @@
         if (candidate?.status === 'confirmed' && typeof candidate.url === 'string') {
           const link = safeUrl(candidate.url);
           if (link) {
+            // Keep previously selected successful sites in their original order; recovered
+            // sites are never inserted as duplicates or mixed with unrelated publishes.
             state.sites.set(site.id, {
               id: site.id, name: site.name,
               url: link, shareUrl: link, selected: true, recovered: true
@@ -464,8 +489,8 @@
     try {
       state.cardBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
       state.cardReady = !!state.cardBlob;
-      el('mcs-download-pdf').disabled = !state.cardReady || !selectedSites().length;
-      el('mcs-download-docx').disabled = !state.cardReady || !selectedSites().length;
+      el('mcs-download-pdf').disabled = !selectedSites().length;
+      el('mcs-download-docx').disabled = !selectedSites().length;
       el('mcs-copy-image').disabled = !state.cardReady;
       el('mcs-download-image').disabled = !state.cardReady;
       el('mcs-image-state').textContent = state.cardReady ? 'الصورة الحقيقية جاهزة للنسخ أو التحميل.' : 'فشل حفظ بطاقة الصورة.';
@@ -553,32 +578,39 @@
 
   async function exportFile(kind) {
     const button = el(kind === 'pdf' ? 'mcs-download-pdf' : 'mcs-download-docx');
-    if (!state.cardReady || !state.image || !window.MCSExport) {
-      toast('ملف الصورة أو مكتبة التصدير غير جاهزة.'); return;
+    if (!selectedSites().length || !window.MCSExport) {
+      toast('حدد موقعًا واحدًا على الأقل وتأكد من تحميل مكتبة التصدير.'); return;
     }
     button.disabled = true;
     try {
       // Preserve the unmodified photo in Word; PDF uses the titled ready-made image card.
       const src = state.image;
-      const scale = Math.min(1, 1600 / Math.max(src.naturalWidth, src.naturalHeight));
-      const w = Math.max(1,Math.round(src.naturalWidth*scale));
-      const h = Math.max(1,Math.round(src.naturalHeight*scale));
-      const cv = document.createElement('canvas');
-      cv.width = w; cv.height = h;
-      cv.getContext('2d').drawImage(src,0,0,w,h);
-      const photoBlob = await new Promise(resolve=>cv.toBlob(resolve,'image/png'));
-      if (!photoBlob) throw new Error('فشل إنشاء نسخة الصورة الأصلية للملف');
+      let w = 0, h = 0, photoBlob = null;
+      if (src && src.naturalWidth > 0 && src.naturalHeight > 0) {
+        const scale = Math.min(1, 1600 / Math.max(src.naturalWidth, src.naturalHeight));
+        w = Math.max(1, Math.round(src.naturalWidth * scale));
+        h = Math.max(1, Math.round(src.naturalHeight * scale));
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const context = cv.getContext('2d');
+        if (context) {
+          context.drawImage(src, 0, 0, w, h);
+          photoBlob = await new Promise(resolve => cv.toBlob(resolve, 'image/png'));
+        }
+      }
       const data = {
         title:el('mcs-title').value.trim() || mcsShare.title,
         cardBlob:state.cardBlob,
         photoBlob,
         photoWidth:w,
         photoHeight:h,
-        sites:selectedLinks().map(url=>({url}))
+        // Documents use the verified original URLs, not optional WhatsApp formatting.
+        sites:selectedSites().map(s=>({url:s.shareUrl || s.url}))
       };
       if (!data.sites.length) throw new Error('اختر موقعًا واحدًا على الأقل');
       await window.MCSExport[kind](data);
-      toast('تم تجهيز ' + (kind === 'pdf' ? 'PDF' : 'Word') + ' للتنزيل. أرفقه في واتساب من خيار المستندات.');
+      toast('تم تجهيز ' + (kind === 'pdf' ? 'PDF' : 'Word') +
+        (state.cardReady && photoBlob ? ' بالصورة والروابط' : ' بالروابط كاملة بدون صورة') + '؛ أرفقه كمستند في واتساب.');
     } catch (err) {
       toast('تعذر إنشاء الملف: ' + (err?.message || String(err)));
       console.error('[Mubdaa Central Share] Document export failed',err);
